@@ -121,8 +121,9 @@ namespace System
                 1000000000
             };
 
-            // Fast access for 10^n where n is 1-19
+            // Fast access for 10^n where n is 0-19
             private static readonly ulong[] s_ulongPowers10 = new ulong[] {
+                1,
                 10,
                 100,
                 1000,
@@ -451,11 +452,20 @@ namespace System
 
                 // Compute full remainder, rem = dividend - (quo * divisor).
                 //
-                ulong prod1 = UInt32x32To64(quo, bufDen.U0); // quo * lo divisor
-                ulong prod2 = UInt32x32To64(quo, bufDen.U1); // quo * mid divisor
-                prod2 += prod1 >> 32;
-                prod1 = (uint)prod1 | (prod2 << 32);
-                prod2 >>= 32;
+                ulong prod1, prod2;
+                if (X86.Bmi2.X64.IsSupported)
+                    unsafe
+                    {
+                        prod2 = X86.Bmi2.X64.MultiplyNoFlags(quo, bufDen.Low64, &prod1);
+                    }
+                else
+                {
+                    prod1 = UInt32x32To64(quo, bufDen.U0); // quo * lo divisor
+                    prod2 = UInt32x32To64(quo, bufDen.U1); // quo * mid divisor
+                    prod2 += prod1 >> 32;
+                    prod1 = (uint)prod1 | (prod2 << 32);
+                    prod2 >>= 32;
+                }
 
                 ulong num = bufNum.Low64;
                 num -= prod1;
@@ -958,10 +968,18 @@ ThrowOverflow:
                             power = TenToPowerNine;
                             if (scale < MaxInt32Scale)
                                 power = s_powers10[scale];
-                            tmpLow = UInt32x32To64((uint)low64, power);
-                            tmp64 = UInt32x32To64((uint)(low64 >> 32), power) + (tmpLow >> 32);
-                            low64 = (uint)tmpLow + (tmp64 << 32);
-                            high = (uint)(tmp64 >> 32);
+                            if (X86.Bmi2.X64.IsSupported)
+                            {
+                                high = (uint)X86.Bmi2.X64.MultiplyNoFlags(low64, power, &tmpLow);
+                                low64 = tmpLow;
+                            }
+                            else
+                            {
+                                tmpLow = UInt32x32To64((uint)low64, power);
+                                tmp64 = UInt32x32To64((uint)(low64 >> 32), power) + (tmpLow >> 32);
+                                low64 = (uint)tmpLow + (tmp64 << 32);
+                                high = (uint)(tmp64 >> 32);
+                            }
                             if ((scale -= MaxInt32Scale) <= 0)
                                 goto AlignedAdd;
                         } while (high == 0);
@@ -974,10 +992,18 @@ ThrowOverflow:
                         power = TenToPowerNine;
                         if (scale < MaxInt32Scale)
                             power = s_powers10[scale];
-                        tmpLow = UInt32x32To64((uint)low64, power);
-                        tmp64 = UInt32x32To64((uint)(low64 >> 32), power) + (tmpLow >> 32);
-                        low64 = (uint)tmpLow + (tmp64 << 32);
-                        tmp64 >>= 32;
+                        if (X86.Bmi2.X64.IsSupported)
+                        {
+                            tmp64 = X86.Bmi2.X64.MultiplyNoFlags(low64, power, &tmpLow);
+                            low64 = tmpLow;
+                        }
+                        else
+                        {
+                            tmpLow = UInt32x32To64((uint)low64, power);
+                            tmp64 = UInt32x32To64((uint)(low64 >> 32), power) + (tmpLow >> 32);
+                            low64 = (uint)tmpLow + (tmp64 << 32);
+                            tmp64 >>= 32;
+                        }
                         tmp64 += UInt32x32To64(high, power);
 
                         scale -= MaxInt32Scale;
@@ -1214,14 +1240,25 @@ ReturnResult:
                     if (pdecIn.High != 0)
                         goto ThrowOverflow;
                     uint pwr = s_powers10[-scale];
-                    ulong high = UInt32x32To64(pwr, pdecIn.Mid);
-                    if (high > uint.MaxValue)
-                        goto ThrowOverflow;
-                    ulong low = UInt32x32To64(pwr, pdecIn.Low);
-                    low += high <<= 32;
-                    if (low < high)
-                        goto ThrowOverflow;
-                    value = (long)low;
+                    if (X86.Bmi2.X64.IsSupported)
+                        unsafe
+                        {
+                            ulong tmp;
+                            if (X86.Bmi2.X64.MultiplyNoFlags(pwr, pdecIn.Low64, &tmp) != 0)
+                                goto ThrowOverflow;
+                            value = (long)tmp;
+                        }
+                    else
+                    {
+                        ulong high = UInt32x32To64(pwr, pdecIn.Mid);
+                        if (high > uint.MaxValue)
+                            goto ThrowOverflow;
+                        ulong low = UInt32x32To64(pwr, pdecIn.Low);
+                        low += high <<= 32;
+                        if (low < high)
+                            goto ThrowOverflow;
+                        value = (long)low;
+                    }
                 }
                 else
                 {
@@ -1238,10 +1275,41 @@ ReturnResult:
                 if (pdecIn.IsNegative)
                     value = -value;
 
+                if (value == 42 && X86.Bmi2.X64.IsSupported)
+                    mulx(0, 0);
+
+                if (value == 420 && X86.Bmi2.X64.IsSupported)
+                    mulxbug(0, 0);
+
+                if (value == 4200 && X86.Bmi2.X64.IsSupported)
+                    mulxbug2(0, 0);
+
                 return value;
 
 ThrowOverflow:
                 throw new OverflowException(SR.Overflow_Currency);
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static unsafe ulong mulxbug(ulong a, ulong b)
+            {
+                ulong r;
+                X86.Bmi2.X64.MultiplyNoFlags(a, b, &r);
+                return r;
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static unsafe ulong mulxbug2(ulong a, ulong b)
+            {
+                ulong r;
+                return X86.Bmi2.X64.MultiplyNoFlags(a, b, &r);
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static unsafe ulong mulx(ulong a, ulong b)
+            {
+                ulong r;
+                return X86.Bmi2.X64.MultiplyNoFlags(a, b, &r) + r;
             }
 
             /// <summary>
@@ -1298,20 +1366,40 @@ ThrowOverflow:
                     }
 
                     // d1 will need to be multiplied by 10^scale so it will have the same scale as d2.
-                    // Scaling loop, up to 10^9 at a time.
-                    do
-                    {
-                        uint power = scale >= MaxInt32Scale ? TenToPowerNine : s_powers10[scale];
-                        ulong tmpLow = UInt32x32To64((uint)low64, power);
-                        ulong tmp = UInt32x32To64((uint)(low64 >> 32), power) + (tmpLow >> 32);
-                        low64 = (uint)tmpLow + (tmp << 32);
-                        tmp >>= 32;
-                        tmp += UInt32x32To64(high, power);
-                        // If the scaled value has more than 96 significant bits then it's greater than d2
-                        if (tmp > uint.MaxValue)
-                            return sign;
-                        high = (uint)tmp;
-                    } while ((scale -= MaxInt32Scale) > 0);
+                    if (X86.Bmi2.X64.IsSupported)
+                        // Scaling loop, up to 10^19 at a time.
+                        do
+                            unsafe
+                            {
+                                ulong power = TenToPowerEighteen * 10;
+                                var powers = s_ulongPowers10;
+                                if ((uint)scale < (uint)powers.Length)
+                                    power = powers[scale];
+                                ulong tmpLow;
+                                ulong tmp = X86.Bmi2.X64.MultiplyNoFlags(low64, power, &tmpLow);
+                                low64 = tmpLow;
+
+                                // If the scaled value has more than 96 significant bits then it's greater than d2
+                                if (X86.Bmi2.X64.MultiplyNoFlags(high, power, &tmpLow) != 0
+                                    || (tmp += tmpLow) > uint.MaxValue)
+                                    return sign;
+                                high = (uint)tmp;
+                            } while ((scale -= MaxInt64Scale) > 0);
+                    else
+                        // Scaling loop, up to 10^9 at a time.
+                        do
+                        {
+                            uint power = scale >= MaxInt32Scale ? TenToPowerNine : s_powers10[scale];
+                            ulong tmpLow = UInt32x32To64((uint)low64, power);
+                            ulong tmp = UInt32x32To64((uint)(low64 >> 32), power) + (tmpLow >> 32);
+                            low64 = (uint)tmpLow + (tmp << 32);
+                            tmp >>= 32;
+                            tmp += UInt32x32To64(high, power);
+                            // If the scaled value has more than 96 significant bits then it's greater than d2
+                            if (tmp > uint.MaxValue)
+                                return sign;
+                            high = (uint)tmp;
+                        } while ((scale -= MaxInt32Scale) > 0);
                 }
 
                 uint cmpHigh = high - d2High;
@@ -1339,7 +1427,7 @@ ThrowOverflow:
             {
                 int scale = (byte)(d1.uflags + d2.uflags >> ScaleShift);
 
-                ulong tmp;
+                ulong tmp, tmp2;
                 uint hiProd;
                 Unsafe.SkipInit(out Buf24 bufProd);
                 DebugPoison(ref bufProd);
@@ -1360,8 +1448,7 @@ ThrowOverflow:
                             if (scale > DEC_SCALE_MAX + MaxInt64Scale)
                                 goto ReturnZero;
 
-                            scale -= DEC_SCALE_MAX + 1;
-                            ulong power = s_ulongPowers10[scale];
+                            ulong power = s_ulongPowers10[scale - DEC_SCALE_MAX];
 
                             // TODO: https://github.com/dotnet/runtime/issues/5213
                             tmp = low64 / power;
@@ -1384,12 +1471,20 @@ ThrowOverflow:
                     else
                     {
                         // Left value is 32-bit, result fits in 4 uints
-                        tmp = UInt32x32To64(d1.Low, d2.Low);
-                        bufProd.U0 = (uint)tmp;
+                        if (X86.Bmi2.X64.IsSupported)
+                        {
+                            tmp = X86.Bmi2.X64.MultiplyNoFlags(d1.Low64, d2.Low64, &tmp2);
+                            bufProd.Low64 = tmp2;
+                        }
+                        else
+                        {
+                            tmp = UInt32x32To64(d1.Low, d2.Low);
+                            bufProd.U0 = (uint)tmp;
 
-                        tmp = UInt32x32To64(d1.Low, d2.Mid) + (tmp >> 32);
-                        bufProd.U1 = (uint)tmp;
-                        tmp >>= 32;
+                            tmp = UInt32x32To64(d1.Low, d2.Mid) + (tmp >> 32);
+                            bufProd.U1 = (uint)tmp;
+                            tmp >>= 32;
+                        }
 
                         if (d2.High != 0)
                         {
@@ -1408,12 +1503,20 @@ ThrowOverflow:
                 else if ((d2.High | d2.Mid) == 0)
                 {
                     // Right value is 32-bit, result fits in 4 uints
-                    tmp = UInt32x32To64(d2.Low, d1.Low);
-                    bufProd.U0 = (uint)tmp;
+                    if (X86.Bmi2.X64.IsSupported)
+                    {
+                        tmp = X86.Bmi2.X64.MultiplyNoFlags(d1.Low64, d2.Low64, &tmp2);
+                        bufProd.Low64 = tmp2;
+                    }
+                    else
+                    {
+                        tmp = UInt32x32To64(d2.Low, d1.Low);
+                        bufProd.U0 = (uint)tmp;
 
-                    tmp = UInt32x32To64(d2.Low, d1.Mid) + (tmp >> 32);
-                    bufProd.U1 = (uint)tmp;
-                    tmp >>= 32;
+                        tmp = UInt32x32To64(d2.Low, d1.Mid) + (tmp >> 32);
+                        bufProd.U1 = (uint)tmp;
+                        tmp >>= 32;
+                    }
 
                     if (d1.High != 0)
                     {
@@ -1452,50 +1555,72 @@ ThrowOverflow:
                     // [p-5][p-4][p-3][p-2][p-1][p-0]      prod[] array
                     //
 
-                    tmp = UInt32x32To64(d1.Low, d2.Low);
-                    bufProd.U0 = (uint)tmp;
-
-                    ulong tmp2 = UInt32x32To64(d1.Low, d2.Mid) + (tmp >> 32);
-
-                    tmp = UInt32x32To64(d1.Mid, d2.Low);
-                    tmp += tmp2; // this could generate carry
-                    bufProd.U1 = (uint)tmp;
-                    if (tmp < tmp2) // detect carry
-                        tmp2 = (tmp >> 32) | (1UL << 32);
+                    if (X86.Bmi2.X64.IsSupported)
+                    {
+                        tmp = X86.Bmi2.X64.MultiplyNoFlags(d1.Low64, d2.Low64, &tmp2);
+                        bufProd.Low64 = tmp2;
+                    }
                     else
-                        tmp2 = tmp >> 32;
+                    {
+                        tmp = UInt32x32To64(d1.Low, d2.Low);
+                        bufProd.U0 = (uint)tmp;
 
-                    tmp = UInt32x32To64(d1.Mid, d2.Mid) + tmp2;
+                        tmp2 = UInt32x32To64(d1.Low, d2.Mid) + (tmp >> 32);
+
+                        tmp = UInt32x32To64(d1.Mid, d2.Low);
+                        tmp += tmp2; // this could generate carry
+                        bufProd.U1 = (uint)tmp;
+                        if (tmp < tmp2) // detect carry
+                            tmp2 = (tmp >> 32) | (1UL << 32);
+                        else
+                            tmp2 = tmp >> 32;
+
+                        tmp = UInt32x32To64(d1.Mid, d2.Mid) + tmp2;
+                    }
 
                     if ((d1.High | d2.High) > 0)
                     {
                         // Highest 32 bits is non-zero.     Calculate 5 more partial products.
                         //
-                        tmp2 = UInt32x32To64(d1.Low, d2.High);
-                        tmp += tmp2; // this could generate carry
-                        uint tmp3 = 0;
-                        if (tmp < tmp2) // detect carry
-                            tmp3 = 1;
+                        if (X86.Bmi2.X64.IsSupported)
+                        {
+                            ulong mid64 = tmp;
+                            tmp = X86.Bmi2.X64.MultiplyNoFlags(d1.High, d2.Low64, &tmp2);
+                            if (mid64 > (mid64 += tmp2)) // add with carry detection
+                                tmp++;
+                            tmp += X86.Bmi2.X64.MultiplyNoFlags(d2.High, d1.Low64, &tmp2);
+                            if (mid64 > (mid64 += tmp2)) // add with carry detection
+                                tmp++;
+                            bufProd.Mid64 = mid64;
+                        }
+                        else
+                        {
+                            tmp2 = UInt32x32To64(d1.Low, d2.High);
+                            tmp += tmp2; // this could generate carry
+                            uint tmp3 = 0;
+                            if (tmp < tmp2) // detect carry
+                                tmp3 = 1;
 
-                        tmp2 = UInt32x32To64(d1.High, d2.Low);
-                        tmp += tmp2; // this could generate carry
-                        bufProd.U2 = (uint)tmp;
-                        if (tmp < tmp2) // detect carry
-                            tmp3++;
-                        tmp2 = ((ulong)tmp3 << 32) | (tmp >> 32);
+                            tmp2 = UInt32x32To64(d1.High, d2.Low);
+                            tmp += tmp2; // this could generate carry
+                            bufProd.U2 = (uint)tmp;
+                            if (tmp < tmp2) // detect carry
+                                tmp3++;
+                            tmp2 = ((ulong)tmp3 << 32) | (tmp >> 32);
 
-                        tmp = UInt32x32To64(d1.Mid, d2.High);
-                        tmp += tmp2; // this could generate carry
-                        tmp3 = 0;
-                        if (tmp < tmp2) // detect carry
-                            tmp3 = 1;
+                            tmp = UInt32x32To64(d1.Mid, d2.High);
+                            tmp += tmp2; // this could generate carry
+                            tmp3 = 0;
+                            if (tmp < tmp2) // detect carry
+                                tmp3 = 1;
 
-                        tmp2 = UInt32x32To64(d1.High, d2.Mid);
-                        tmp += tmp2; // this could generate carry
-                        bufProd.U3 = (uint)tmp;
-                        if (tmp < tmp2) // detect carry
-                            tmp3++;
-                        tmp = ((ulong)tmp3 << 32) | (tmp >> 32);
+                            tmp2 = UInt32x32To64(d1.High, d2.Mid);
+                            tmp += tmp2; // this could generate carry
+                            bufProd.U3 = (uint)tmp;
+                            if (tmp < tmp2) // detect carry
+                                tmp3++;
+                            tmp = ((ulong)tmp3 << 32) | (tmp >> 32);
+                        }
 
                         bufProd.High64 = UInt32x32To64(d1.High, d2.High) + tmp;
 
@@ -1618,30 +1743,44 @@ ReturnZero:
                     // Add -power factors of 10, -power <= (29 - 7) = 22.
                     //
                     power = -power;
-                    if (power < 10)
+                    if (X86.Bmi2.X64.IsSupported)
+                        unsafe
+                        {
+                            ulong low64;
+                            ulong[] powers = s_ulongPowers10;
+                            if ((uint)power < (uint)powers.Length)
+                            {
+                                result.High = (uint)X86.Bmi2.X64.MultiplyNoFlags(mant, powers[power], &low64);
+                                result.Low64 = low64;
+                            }
+                            else
+                            {
+                                ulong hi64 = X86.Bmi2.X64.MultiplyNoFlags(mant * powers[power - 19], TenToPowerEighteen * 10, &low64);
+                                if (hi64 > uint.MaxValue)
+                                    Number.ThrowOverflowException(TypeCode.Decimal);
+                                result.High = (uint)hi64;
+                                result.Low64 = low64;
+                            }
+                        }
+                    else if (power < 10)
                     {
-                        result.Low64 = UInt32x32To64(mant, s_powers10[power]);
+                        result.Low64 = UInt32x32To64(mant, s_powers10[(uint)power]);
+                    }
+                    else if (power > 18)
+                    {
+                        ulong low64 = UInt32x32To64(mant, s_powers10[power - 18]);
+                        UInt64x64To128(low64, TenToPowerEighteen, ref result);
                     }
                     else
                     {
-                        // Have a big power of 10.
-                        //
-                        if (power > 18)
-                        {
-                            ulong low64 = UInt32x32To64(mant, s_powers10[power - 18]);
-                            UInt64x64To128(low64, TenToPowerEighteen, ref result);
-                        }
-                        else
-                        {
-                            ulong low64 = UInt32x32To64(mant, s_powers10[power - 9]);
-                            ulong hi64 = UInt32x32To64(TenToPowerNine, (uint)(low64 >> 32));
-                            low64 = UInt32x32To64(TenToPowerNine, (uint)low64);
-                            result.Low = (uint)low64;
-                            hi64 += low64 >> 32;
-                            result.Mid = (uint)hi64;
-                            hi64 >>= 32;
-                            result.High = (uint)hi64;
-                        }
+                        ulong low64 = UInt32x32To64(mant, s_powers10[power - 9]);
+                        ulong hi64 = UInt32x32To64(TenToPowerNine, (uint)(low64 >> 32));
+                        low64 = UInt32x32To64(TenToPowerNine, (uint)low64);
+                        result.Low = (uint)low64;
+                        hi64 += low64 >> 32;
+                        result.Mid = (uint)hi64;
+                        hi64 >>= 32;
+                        result.High = (uint)hi64;
                     }
                 }
                 else
@@ -1785,7 +1924,17 @@ ReturnZero:
                     // Add -power factors of 10, -power <= (29 - 15) = 14.
                     //
                     power = -power;
-                    if (power < 10)
+                    if (X86.Bmi2.X64.IsSupported)
+                        unsafe
+                        {
+                            ulong low64;
+                            ulong hi64 = X86.Bmi2.X64.MultiplyNoFlags(mant, s_ulongPowers10[power], &low64);
+                            if (hi64 > uint.MaxValue)
+                                Number.ThrowOverflowException(TypeCode.Decimal);
+                            result.High = (uint)hi64;
+                            result.Low64 = low64;
+                        }
+                    else if (power < 10)
                     {
                         uint pow10 = s_powers10[power];
                         ulong low64 = UInt32x32To64((uint)mant, pow10);
@@ -1801,7 +1950,7 @@ ReturnZero:
                         // Have a big power of 10.
                         //
                         Debug.Assert(power <= 14);
-                        UInt64x64To128(mant, s_ulongPowers10[power - 1], ref result);
+                        UInt64x64To128(mant, s_ulongPowers10[power], ref result);
                     }
                 }
                 else
@@ -1991,8 +2140,21 @@ ReturnZero:
                         power = s_powers10[curScale];
                         scale += curScale;
 
-                        if (IncreaseScale(ref bufQuo, power) != 0)
-                            goto ThrowOverflow;
+                        if (X86.Bmi2.X64.IsSupported)
+                        {
+                            ulong tmpLow;
+                            ulong tmpHigh = X86.Bmi2.X64.MultiplyNoFlags(bufQuo.Low64, power, &tmpLow);
+                            bufQuo.Low64 = tmpLow;
+                            tmpHigh += UInt32x32To64(bufQuo.U2, power);
+                            if (tmpHigh > uint.MaxValue)
+                                goto ThrowOverflow;
+                            bufQuo.U2 = (uint)tmpHigh;
+                        }
+                        else
+                        {
+                            if (IncreaseScale(ref bufQuo, power) != 0)
+                                goto ThrowOverflow;
+                        }
 
                         ulong num = UInt32x32To64(remainder, power);
                         // TODO: https://github.com/dotnet/runtime/issues/5213
@@ -2074,10 +2236,27 @@ ReturnZero:
                             power = s_powers10[curScale];
                             scale += curScale;
 
-                            if (IncreaseScale(ref bufQuo, power) != 0)
-                                goto ThrowOverflow;
+                            if (X86.Bmi2.X64.IsSupported)
+                            {
+                                ulong tmpLow;
+                                ulong tmpHigh = X86.Bmi2.X64.MultiplyNoFlags(bufQuo.Low64, power, &tmpLow);
+                                bufQuo.Low64 = tmpLow;
+                                tmpHigh += UInt32x32To64(bufQuo.U2, power);
+                                if (tmpHigh > uint.MaxValue)
+                                    goto ThrowOverflow;
+                                bufQuo.U2 = (uint)tmpHigh;
 
-                            IncreaseScale64(ref *(Buf12*)&bufRem, power);
+                                bufRem.U2 = (uint)X86.Bmi2.X64.MultiplyNoFlags(bufRem.Low64, power, &tmpLow);
+                                bufRem.Low64 = tmpLow;
+                            }
+                            else
+                            {
+                                if (IncreaseScale(ref bufQuo, power) != 0)
+                                    goto ThrowOverflow;
+
+                                IncreaseScale64(ref *(Buf12*)&bufRem, power);
+                            }
+
                             tmp = Div96By64(ref *(Buf12*)&bufRem, divisor);
                             if (!Add32To96(ref bufQuo, tmp))
                             {
@@ -2146,10 +2325,27 @@ ReturnZero:
                             power = s_powers10[curScale];
                             scale += curScale;
 
-                            if (IncreaseScale(ref bufQuo, power) != 0)
-                                goto ThrowOverflow;
+                            if (X86.Bmi2.X64.IsSupported)
+                            {
+                                ulong tmpLow;
+                                ulong tmpHigh = X86.Bmi2.X64.MultiplyNoFlags(bufQuo.Low64, power, &tmpLow);
+                                bufQuo.Low64 = tmpLow;
+                                tmpHigh += UInt32x32To64(bufQuo.U2, power);
+                                if (tmpHigh > uint.MaxValue)
+                                    goto ThrowOverflow;
+                                bufQuo.U2 = (uint)tmpHigh;
 
-                            bufRem.U3 = IncreaseScale(ref *(Buf12*)&bufRem, power);
+                                tmpHigh = X86.Bmi2.X64.MultiplyNoFlags(bufRem.Low64, power, &tmpLow);
+                                bufRem.Low64 = tmpLow;
+                                bufRem.High64 = tmpHigh + UInt32x32To64(bufRem.U2, power);
+                            }
+                            else
+                            {
+                                if (IncreaseScale(ref bufQuo, power) != 0)
+                                    goto ThrowOverflow;
+
+                                bufRem.U3 = IncreaseScale(ref *(Buf12*)&bufRem, power);
+                            }
                             tmp = Div128By96(ref bufRem, ref bufDivisor);
                             if (!Add32To96(ref bufQuo, tmp))
                             {
@@ -2226,16 +2422,30 @@ ThrowOverflow:
                 if (scale > 0)
                 {
                     // Divisor scale can always be increased to dividend scale for remainder calculation.
-                    do
-                    {
-                        uint power = scale >= MaxInt32Scale ? TenToPowerNine : s_powers10[scale];
-                        ulong tmp = UInt32x32To64(d2.Low, power);
-                        d2.Low = (uint)tmp;
-                        tmp >>= 32;
-                        tmp += (d2.Mid + ((ulong)d2.High << 32)) * power;
-                        d2.Mid = (uint)tmp;
-                        d2.High = (uint)(tmp >> 32);
-                    } while ((scale -= MaxInt32Scale) > 0);
+                    if (X86.Bmi2.X64.IsSupported)
+                        do
+                            unsafe
+                            {
+                                ulong power = TenToPowerEighteen * 10;
+                                var powers = s_ulongPowers10;
+                                if ((uint)scale < (uint)powers.Length)
+                                    power = powers[scale];
+                                ulong tmp;
+                                ulong high = X86.Bmi2.X64.MultiplyNoFlags(d2.Low64, power, &tmp);
+                                d2.Low64 = tmp;
+                                d2.High = (uint)high + d2.High * (uint)power;
+                            } while ((scale -= MaxInt64Scale) > 0);
+                    else
+                        do
+                        {
+                            uint power = scale >= MaxInt32Scale ? TenToPowerNine : s_powers10[scale];
+                            ulong tmp = UInt32x32To64(d2.Low, power);
+                            d2.Low = (uint)tmp;
+                            tmp >>= 32;
+                            tmp += (d2.Mid + ((ulong)d2.High << 32)) * power;
+                            d2.Mid = (uint)tmp;
+                            d2.High = (uint)(tmp >> 32);
+                        } while ((scale -= MaxInt32Scale) > 0);
                     scale = 0;
                 }
 
@@ -2257,10 +2467,21 @@ ThrowOverflow:
                                 break;
                             uint power = iCurScale >= MaxInt32Scale ? TenToPowerNine : s_powers10[iCurScale];
                             scale += iCurScale;
-                            ulong tmp = UInt32x32To64(bufQuo.U0, power);
-                            bufQuo.U0 = (uint)tmp;
-                            tmp >>= 32;
-                            bufQuo.High64 = tmp + bufQuo.High64 * power;
+                            if (X86.Bmi2.X64.IsSupported)
+                                unsafe
+                                {
+                                    ulong tmp;
+                                    ulong high = X86.Bmi2.X64.MultiplyNoFlags(bufQuo.Low64, power, &tmp);
+                                    bufQuo.Low64 = tmp;
+                                    bufQuo.U2 = (uint)high + bufQuo.U2 * power;
+                                }
+                            else
+                            {
+                                ulong tmp = UInt32x32To64(bufQuo.U0, power);
+                                bufQuo.U0 = (uint)tmp;
+                                tmp >>= 32;
+                                bufQuo.High64 = tmp + bufQuo.High64 * power;
+                            }
                             if (power != TenToPowerNine)
                                 break;
                         }
