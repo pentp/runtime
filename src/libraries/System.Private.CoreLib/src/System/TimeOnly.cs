@@ -22,23 +22,17 @@ namespace System
 #endif // FEATURE_GENERIC_MATH
     {
         // represent the number of ticks map to the time of the day. 1 ticks = 100-nanosecond in time measurements.
-        private readonly long _ticks;
-
-        // MinTimeTicks is the ticks for the midnight time 00:00:00.000 AM
-        private const long MinTimeTicks = 0;
-
-        // MaxTimeTicks is the max tick value for the time in the day. It is calculated using DateTime.Today.AddTicks(-1).TimeOfDay.Ticks.
-        private const long MaxTimeTicks = 863_999_999_999;
+        private readonly ulong _ticks;
 
         /// <summary>
         /// Represents the smallest possible value of TimeOnly.
         /// </summary>
-        public static TimeOnly MinValue => new TimeOnly((ulong)MinTimeTicks);
+        public static TimeOnly MinValue => new TimeOnly((ulong)0);
 
         /// <summary>
         /// Represents the largest possible value of TimeOnly.
         /// </summary>
-        public static TimeOnly MaxValue => new TimeOnly((ulong)MaxTimeTicks);
+        public static TimeOnly MaxValue => new TimeOnly((ulong)TimeSpan.TicksPerDay - 1);
 
         /// <summary>
         /// Initializes a new instance of the timeOnly structure to the specified hour and the minute.
@@ -70,63 +64,61 @@ namespace System
         /// <param name="ticks">A time of day expressed in the number of 100-nanosecond units since 00:00:00.0000000.</param>
         public TimeOnly(long ticks)
         {
-            if ((ulong)ticks > MaxTimeTicks)
+            if ((ulong)ticks >= TimeSpan.TicksPerDay)
             {
                 throw new ArgumentOutOfRangeException(nameof(ticks), SR.ArgumentOutOfRange_TimeOnlyBadTicks);
             }
 
-            _ticks = ticks;
+            _ticks = (ulong)ticks;
         }
 
         // exist to bypass the check in the public constructor.
-        internal TimeOnly(ulong ticks) => _ticks = (long)ticks;
+        internal TimeOnly(ulong ticks) => _ticks = ticks;
 
         /// <summary>
         /// Gets the hour component of the time represented by this instance.
         /// </summary>
-        public int Hour => new TimeSpan(_ticks).Hours;
+        public int Hour => (int)(_ticks / TimeSpan.TicksPerHour);
 
         /// <summary>
         /// Gets the minute component of the time represented by this instance.
         /// </summary>
-        public int Minute => new TimeSpan(_ticks).Minutes;
+        public int Minute => (int)((uint)(_ticks / TimeSpan.TicksPerMinute) % 60);
 
         /// <summary>
         /// Gets the second component of the time represented by this instance.
         /// </summary>
-        public int Second => new TimeSpan(_ticks).Seconds;
+        public int Second => (int)((uint)(_ticks / TimeSpan.TicksPerSecond) % 60);
 
         /// <summary>
         /// Gets the millisecond component of the time represented by this instance.
         /// </summary>
-        public int Millisecond => new TimeSpan(_ticks).Milliseconds;
+        public int Millisecond => (int)((uint)(_ticks / TimeSpan.TicksPerMillisecond) % 1000);
 
         /// <summary>
         /// Gets the number of ticks that represent the time of this instance.
         /// </summary>
-        public long Ticks => _ticks;
+        public long Ticks => (long)_ticks;
 
-        private TimeOnly AddTicks(long ticks) => new TimeOnly((_ticks + TimeSpan.TicksPerDay + (ticks % TimeSpan.TicksPerDay)) % TimeSpan.TicksPerDay);
+        private TimeOnly AddTicks(long ticks) => new TimeOnly((_ticks + TimeSpan.TicksPerDay + (ulong)(ticks % TimeSpan.TicksPerDay)) % TimeSpan.TicksPerDay);
 
         private TimeOnly AddTicks(long ticks, out int wrappedDays)
         {
-            wrappedDays = (int)(ticks / TimeSpan.TicksPerDay);
-            long newTicks = _ticks + ticks % TimeSpan.TicksPerDay;
+            (long days, long newTicks) = Math.DivRem(ticks, TimeSpan.TicksPerDay);
+            newTicks += (long)_ticks;
             if (newTicks < 0)
             {
-                wrappedDays--;
+                days--;
                 newTicks += TimeSpan.TicksPerDay;
             }
-            else
+            else if (newTicks >= TimeSpan.TicksPerDay)
             {
-                if (newTicks >= TimeSpan.TicksPerDay)
-                {
-                    wrappedDays++;
-                    newTicks -= TimeSpan.TicksPerDay;
-                }
+                days++;
+                newTicks -= TimeSpan.TicksPerDay;
             }
 
-            return new TimeOnly(newTicks);
+            wrappedDays = (int)days;
+            return new TimeOnly((ulong)newTicks);
         }
 
         /// <summary>
@@ -190,8 +182,8 @@ namespace System
         /// </remarks>
         public bool IsBetween(TimeOnly start, TimeOnly end)
         {
-            long startTicks = start._ticks;
-            long endTicks = end._ticks;
+            ulong startTicks = start._ticks;
+            ulong endTicks = end._ticks;
 
             return startTicks <= endTicks
                 ? (startTicks <= _ticks && endTicks > _ticks)
@@ -252,7 +244,11 @@ namespace System
         /// <param name="t1">The first TimeOnly instance.</param>
         /// <param name="t2">The second TimeOnly instance..</param>
         /// <returns>The elapsed time between t1 and t2.</returns>
-        public static TimeSpan operator -(TimeOnly t1, TimeOnly t2) => new TimeSpan((t1._ticks - t2._ticks + TimeSpan.TicksPerDay) % TimeSpan.TicksPerDay);
+        public static TimeSpan operator -(TimeOnly t1, TimeOnly t2)
+        {
+            long diff = (long)(t1._ticks - t2._ticks);
+            return new TimeSpan(diff + ((diff >> 63) & TimeSpan.TicksPerDay));
+        }
 
         /// <summary>
         /// Constructs a TimeOnly object from a TimeSpan representing the time elapsed since midnight.
@@ -266,15 +262,15 @@ namespace System
         /// </summary>
         /// <param name="dateTime">The time DateTime object to extract the time of the day from.</param>
         /// <returns>A TimeOnly object representing time of the day specified in the DateTime object.</returns>
-        public static TimeOnly FromDateTime(DateTime dateTime) => new TimeOnly(dateTime.TimeOfDay.Ticks);
+        public static TimeOnly FromDateTime(DateTime dateTime) => new TimeOnly((ulong)dateTime.Ticks % TimeSpan.TicksPerDay);
 
         /// <summary>
         /// Convert the current TimeOnly instance to a TimeSpan object.
         /// </summary>
         /// <returns>A TimeSpan object spanning to the time specified in the current TimeOnly object.</returns>
-        public TimeSpan ToTimeSpan() => new TimeSpan(_ticks);
+        public TimeSpan ToTimeSpan() => new TimeSpan((long)_ticks);
 
-        internal DateTime ToDateTime() => new DateTime(_ticks);
+        internal DateTime ToDateTime() => DateTime.UnsafeCreate((long)_ticks);
 
         /// <summary>
         /// Compares the value of this instance to a specified TimeOnly value and indicates whether this instance is earlier than, the same as, or later than the specified TimeOnly value.
@@ -329,7 +325,7 @@ namespace System
         /// <returns>A 32-bit signed integer hash code.</returns>
         public override int GetHashCode()
         {
-            long ticks = _ticks;
+            ulong ticks = _ticks;
             return unchecked((int)ticks) ^ (int)(ticks >> 32);
         }
 
@@ -517,7 +513,7 @@ namespace System
                 return ParseFailureKind.WrongParts;
             }
 
-            result = new TimeOnly(dtResult.parsedDate.TimeOfDay.Ticks);
+            result = FromDateTime(dtResult.parsedDate);
 
             return ParseFailureKind.None;
         }
@@ -586,7 +582,7 @@ namespace System
                 return ParseFailureKind.WrongParts;
             }
 
-            result = new TimeOnly(dtResult.parsedDate.TimeOfDay.Ticks);
+            result = FromDateTime(dtResult.parsedDate);
 
             return ParseFailureKind.None;
         }
@@ -656,7 +652,7 @@ namespace System
                 dtResult.Init(s);
                 if (DateTimeParse.TryParseExact(s, format, dtfiToUse, style, ref dtResult) &&  ((dtResult.flags & ParseFlagsTimeMask) == 0))
                 {
-                    result = new TimeOnly(dtResult.parsedDate.TimeOfDay.Ticks);
+                    result = FromDateTime(dtResult.parsedDate);
                     return ParseFailureKind.None;
                 }
             }
@@ -822,7 +818,7 @@ namespace System
                     case 'O':
                         return string.Create(16, this, (destination, value) =>
                         {
-                            bool b = DateTimeFormat.TryFormatTimeOnlyO(value.Hour, value.Minute, value.Second, value._ticks % TimeSpan.TicksPerSecond, destination);
+                            bool b = DateTimeFormat.TryFormatTimeOnlyO(value.ToDateTime(), destination);
                             Debug.Assert(b);
                         });
 
@@ -830,7 +826,7 @@ namespace System
                     case 'R':
                         return string.Create(8, this, (destination, value) =>
                         {
-                            bool b = DateTimeFormat.TryFormatTimeOnlyR(value.Hour, value.Minute, value.Second, destination);
+                            bool b = DateTimeFormat.TryFormatTimeOnlyR(value.ToDateTime(), destination);
                             Debug.Assert(b);
                         });
 
@@ -869,7 +865,7 @@ namespace System
                 {
                     case 'o':
                     case 'O':
-                        if (!DateTimeFormat.TryFormatTimeOnlyO(Hour, Minute, Second, _ticks % TimeSpan.TicksPerSecond, destination))
+                        if (!DateTimeFormat.TryFormatTimeOnlyO(ToDateTime(), destination))
                         {
                             charsWritten = 0;
                             return false;
@@ -879,7 +875,7 @@ namespace System
 
                     case 'r':
                     case 'R':
-                        if (!DateTimeFormat.TryFormatTimeOnlyR(Hour, Minute, Second, destination))
+                        if (!DateTimeFormat.TryFormatTimeOnlyR(ToDateTime(), destination))
                         {
                             charsWritten = 0;
                             return false;

@@ -186,11 +186,12 @@ namespace System
 
             char* buffer = stackalloc char[16];
             char* p = buffer + 16;
-            int n = value;
+            uint n = (uint)value;
             do
             {
-                *--p = (char)(n % 10 + '0');
+                uint tmp = n;
                 n /= 10;
+                *--p = (char)(tmp - n * 10 + '0');
             } while ((n != 0) && (p > buffer));
 
             int digits = (int)(buffer + 16 - p);
@@ -455,14 +456,12 @@ namespace System
                 result = StringBuilderCache.Acquire();
             }
 
-            // This is a flag to indicate if we are formatting the dates using Hebrew calendar.
-            bool isHebrewCalendar = (cal.ID == CalendarId.HEBREW);
-            bool isJapaneseCalendar = (cal.ID == CalendarId.JAPAN);
+            CalendarId calId = cal.ID;
             // This is a flag to indicate if we are formatting hour/minute/second only.
             bool bTimeOnly = true;
 
             int i = 0;
-            int tokenLen, hour12;
+            int tokenLen;
 
             while (i < format.Length)
             {
@@ -476,12 +475,12 @@ namespace System
                         break;
                     case 'h':
                         tokenLen = ParseRepeatPattern(format, i, ch);
-                        hour12 = dateTime.Hour % 12;
+                        uint hour12 = (uint)dateTime.Hour % 12;
                         if (hour12 == 0)
                         {
                             hour12 = 12;
                         }
-                        FormatDigits(result, hour12, tokenLen);
+                        FormatDigits(result, (int)hour12, tokenLen);
                         break;
                     case 'H':
                         tokenLen = ParseRepeatPattern(format, i, ch);
@@ -500,11 +499,11 @@ namespace System
                         tokenLen = ParseRepeatPattern(format, i, ch);
                         if (tokenLen <= MaxSecondsFractionDigits)
                         {
-                            long fraction = (dateTime.Ticks % Calendar.TicksPerSecond);
-                            fraction /= (long)Math.Pow(10, 7 - tokenLen);
+                            uint fraction = (uint)((ulong)dateTime.Ticks % Calendar.TicksPerSecond);
+                            fraction /= (uint)TimeSpanParse.Pow10(7 - tokenLen);
                             if (ch == 'f')
                             {
-                                result.AppendSpanFormattable((int)fraction, fixedNumberFormats[tokenLen - 1], CultureInfo.InvariantCulture);
+                                result.AppendSpanFormattable(fraction, fixedNumberFormats[tokenLen - 1], CultureInfo.InvariantCulture);
                             }
                             else
                             {
@@ -523,7 +522,7 @@ namespace System
                                 }
                                 if (effectiveDigits > 0)
                                 {
-                                    result.AppendSpanFormattable((int)fraction, fixedNumberFormats[effectiveDigits - 1], CultureInfo.InvariantCulture);
+                                    result.AppendSpanFormattable(fraction, fixedNumberFormats[effectiveDigits - 1], CultureInfo.InvariantCulture);
                                 }
                                 else
                                 {
@@ -579,7 +578,7 @@ namespace System
                         if (tokenLen <= 2)
                         {
                             int day = cal.GetDayOfMonth(dateTime);
-                            if (isHebrewCalendar)
+                            if (calId == CalendarId.HEBREW)
                             {
                                 // For Hebrew calendar, we need to convert numbers to Hebrew text for yyyy, MM, and dd values.
                                 HebrewFormatDigits(result, day);
@@ -607,7 +606,7 @@ namespace System
                         int month = cal.GetMonth(dateTime);
                         if (tokenLen <= 2)
                         {
-                            if (isHebrewCalendar)
+                            if (calId == CalendarId.HEBREW)
                             {
                                 // For Hebrew calendar, we need to convert numbers to Hebrew text for yyyy, MM, and dd values.
                                 HebrewFormatDigits(result, month);
@@ -619,7 +618,7 @@ namespace System
                         }
                         else
                         {
-                            if (isHebrewCalendar)
+                            if (calId == CalendarId.HEBREW)
                             {
                                 result.Append(FormatHebrewMonthName(dateTime, month, tokenLen, dtfi));
                             }
@@ -649,7 +648,7 @@ namespace System
 
                         int year = cal.GetYear(dateTime);
                         tokenLen = ParseRepeatPattern(format, i, ch);
-                        if (isJapaneseCalendar &&
+                        if (calId == CalendarId.JAPAN &&
                             !LocalAppContextSwitches.FormatJapaneseFirstYearAsANumber &&
                             year == 1 &&
                             ((i + tokenLen < format.Length && format[i + tokenLen] == DateTimeFormatInfoScanner.CJKYearSuff) ||
@@ -664,7 +663,7 @@ namespace System
                         {
                             FormatDigits(result, year, tokenLen <= 2 ? tokenLen : 2);
                         }
-                        else if (cal.ID == CalendarId.HEBREW)
+                        else if (calId == CalendarId.HEBREW)
                         {
                             HebrewFormatDigits(result, year);
                         }
@@ -869,8 +868,9 @@ namespace System
 
         private static void Append2DigitNumber(StringBuilder result, int val)
         {
-            result.Append((char)('0' + (val / 10)));
-            result.Append((char)('0' + (val % 10)));
+            (uint q, uint r) = Math.DivRem((uint)val, 10);
+            result.Append((char)('0' + q));
+            result.Append((char)('0' + r));
         }
 
         internal static string GetRealFormat(ReadOnlySpan<char> format, DateTimeFormatInfo dtfi)
@@ -1252,12 +1252,14 @@ namespace System
         //   012345678901234567890123456789012
         //   ---------------------------------
         //   05:30:45.7680000
-        internal static bool TryFormatTimeOnlyO(int hour, int minute, int second, long fraction, Span<char> destination)
+        internal static bool TryFormatTimeOnlyO(DateTime value, Span<char> destination)
         {
             if (destination.Length < 16)
             {
                 return false;
             }
+
+            value.GetTimePrecise(out int hour, out int minute, out int second, out int fraction);
 
             WriteTwoDecimalDigits((uint)hour, destination, 0);
             destination[2] = ':';
@@ -1266,26 +1268,26 @@ namespace System
             WriteTwoDecimalDigits((uint)second, destination, 6);
             destination[8] = '.';
             WriteDigits((uint)fraction, destination.Slice(9, 7));
-
             return true;
         }
 
         //   012345678901234567890123456789012
         //   ---------------------------------
         //   05:30:45
-        internal static bool TryFormatTimeOnlyR(int hour, int minute, int second, Span<char> destination)
+        internal static bool TryFormatTimeOnlyR(DateTime value, Span<char> destination)
         {
             if (destination.Length < 8)
             {
                 return false;
             }
 
+            value.GetTime(out int hour, out int minute, out int second);
+
             WriteTwoDecimalDigits((uint)hour, destination, 0);
             destination[2] = ':';
             WriteTwoDecimalDigits((uint)minute, destination, 3);
             destination[5] = ':';
             WriteTwoDecimalDigits((uint)second, destination, 6);
-
             return true;
         }
 
@@ -1293,12 +1295,14 @@ namespace System
         //   012345678901234567890123456789012
         //   ---------------------------------
         //   2017-06-12
-        internal static bool TryFormatDateOnlyO(int year, int month, int day, Span<char> destination)
+        internal static bool TryFormatDateOnlyO(DateTime value, Span<char> destination)
         {
             if (destination.Length < 10)
             {
                 return false;
             }
+
+            value.GetDate(out int year, out int month, out int day);
 
             WriteFourDecimalDigits((uint)year, destination, 0);
             destination[4] = '-';
@@ -1312,12 +1316,14 @@ namespace System
         //   01234567890123456789012345678
         //   -----------------------------
         //   Tue, 03 Jan 2017
-        internal static bool TryFormatDateOnlyR(DayOfWeek dayOfWeek, int year, int month, int day, Span<char> destination)
+        internal static bool TryFormatDateOnlyR(DayOfWeek dayOfWeek, DateTime value, Span<char> destination)
         {
             if (destination.Length < 16)
             {
                 return false;
             }
+
+            value.GetDate(out int year, out int month, out int day);
 
             string dayAbbrev = InvariantAbbreviatedDayNames[(int)dayOfWeek];
             Debug.Assert(dayAbbrev.Length == 3);
@@ -1382,7 +1388,6 @@ namespace System
             { _ = destination[MinimumBytesNeeded - 1]; }
 
             dateTime.GetDate(out int year, out int month, out int day);
-            dateTime.GetTimePrecise(out int hour, out int minute, out int second, out int tick);
 
             WriteFourDecimalDigits((uint)year, destination, 0);
             destination[4] = '-';
@@ -1390,6 +1395,9 @@ namespace System
             destination[7] = '-';
             WriteTwoDecimalDigits((uint)day, destination, 8);
             destination[10] = 'T';
+
+            dateTime.GetTimePrecise(out int hour, out int minute, out int second, out int tick);
+
             WriteTwoDecimalDigits((uint)hour, destination, 11);
             destination[13] = ':';
             WriteTwoDecimalDigits((uint)minute, destination, 14);
@@ -1448,28 +1456,32 @@ namespace System
                 dateTime -= offset;
             }
 
-            dateTime.GetDate(out int year, out int month, out int day);
-            dateTime.GetTime(out int hour, out int minute, out int second);
-
             string dayAbbrev = InvariantAbbreviatedDayNames[(int)dateTime.DayOfWeek];
             Debug.Assert(dayAbbrev.Length == 3);
-
-            string monthAbbrev = InvariantAbbreviatedMonthNames[month - 1];
-            Debug.Assert(monthAbbrev.Length == 3);
 
             destination[0] = dayAbbrev[0];
             destination[1] = dayAbbrev[1];
             destination[2] = dayAbbrev[2];
             destination[3] = ',';
             destination[4] = ' ';
+
+            dateTime.GetDate(out int year, out int month, out int day);
+
             WriteTwoDecimalDigits((uint)day, destination, 5);
             destination[7] = ' ';
+
+            string monthAbbrev = InvariantAbbreviatedMonthNames[month - 1];
+            Debug.Assert(monthAbbrev.Length == 3);
+
             destination[8] = monthAbbrev[0];
             destination[9] = monthAbbrev[1];
             destination[10] = monthAbbrev[2];
             destination[11] = ' ';
             WriteFourDecimalDigits((uint)year, destination, 12);
             destination[16] = ' ';
+
+            dateTime.GetTime(out int hour, out int minute, out int second);
+
             WriteTwoDecimalDigits((uint)hour, destination, 17);
             destination[19] = ':';
             WriteTwoDecimalDigits((uint)minute, destination, 20);
@@ -1524,14 +1536,14 @@ namespace System
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void WriteDigits(ulong value, Span<char> buffer)
+        private static void WriteDigits(uint value, Span<char> buffer)
         {
             // We can mutate the 'value' parameter since it's a copy-by-value local.
             // It'll be used to represent the value left over after each division by 10.
 
             for (int i = buffer.Length - 1; i >= 1; i--)
             {
-                ulong temp = '0' + value;
+                uint temp = '0' + value;
                 value /= 10;
                 buffer[i] = (char)(temp - (value * 10));
             }

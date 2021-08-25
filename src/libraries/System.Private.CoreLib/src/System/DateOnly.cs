@@ -20,28 +20,25 @@ namespace System
 #pragma warning restore SA1001
 #endif // FEATURE_GENERIC_MATH
     {
-        private readonly int _dayNumber;
-
-        // Maps to Jan 1st year 1
-        private const int MinDayNumber = 0;
+        private readonly uint _dayNumber;
 
         // Maps to December 31 year 9999. The value calculated from "new DateTime(9999, 12, 31).Ticks / TimeSpan.TicksPerDay"
         private const int MaxDayNumber = 3_652_058;
 
-        private static int DayNumberFromDateTime(DateTime dt) => (int)(dt.Ticks / TimeSpan.TicksPerDay);
+        private static uint DayNumberFromDateTime(DateTime dt) => (uint)((ulong)dt.Ticks / TimeSpan.TicksPerDay);
 
         private DateTime GetEquivalentDateTime() => DateTime.UnsafeCreate(_dayNumber * TimeSpan.TicksPerDay);
 
-        private DateOnly(int dayNumber)
+        private DateOnly(uint dayNumber)
         {
-            Debug.Assert((uint)dayNumber <= MaxDayNumber);
+            Debug.Assert(dayNumber <= MaxDayNumber);
             _dayNumber = dayNumber;
         }
 
         /// <summary>
         /// Gets the earliest possible date that can be created.
         /// </summary>
-        public static DateOnly MinValue => new DateOnly(MinDayNumber);
+        public static DateOnly MinValue => new DateOnly(0);
 
         /// <summary>
         /// Gets the latest possible date that can be created.
@@ -76,7 +73,7 @@ namespace System
                 ThrowHelper.ThrowArgumentOutOfRange_DayNumber(dayNumber);
             }
 
-            return new DateOnly(dayNumber);
+            return new DateOnly((uint)dayNumber);
         }
 
         /// <summary>
@@ -97,7 +94,7 @@ namespace System
         /// <summary>
         /// Gets the day of the week represented by this instance.
         /// </summary>
-        public DayOfWeek DayOfWeek => GetEquivalentDateTime().DayOfWeek;
+        public DayOfWeek DayOfWeek => (DayOfWeek)((_dayNumber + 1) % 7);
 
         /// <summary>
         /// Gets the day of the year represented by this instance.
@@ -107,7 +104,7 @@ namespace System
         /// <summary>
         /// Gets the number of days since January 1, 0001 in the Proleptic Gregorian calendar represented by this instance.
         /// </summary>
-        public int DayNumber => _dayNumber;
+        public int DayNumber => (int)_dayNumber;
 
         /// <summary>
         /// Adds the specified number of days to the value of this instance.
@@ -116,8 +113,8 @@ namespace System
         /// <returns>An instance whose value is the sum of the date represented by this instance and the number of days represented by value.</returns>
         public DateOnly AddDays(int value)
         {
-            int newDayNumber = _dayNumber + value;
-            if ((uint)newDayNumber > MaxDayNumber)
+            uint newDayNumber = _dayNumber + (uint)value;
+            if (newDayNumber > MaxDayNumber)
             {
                 ThrowOutOfRange();
             }
@@ -132,14 +129,14 @@ namespace System
         /// </summary>
         /// <param name="value">A number of months. The months parameter can be negative or positive.</param>
         /// <returns>An object whose value is the sum of the date represented by this instance and months.</returns>
-        public DateOnly AddMonths(int value) => new DateOnly(DayNumberFromDateTime(GetEquivalentDateTime().AddMonths(value)));
+        public DateOnly AddMonths(int value) => FromDateTime(GetEquivalentDateTime().AddMonths(value));
 
         /// <summary>
         /// Adds the specified number of years to the value of this instance.
         /// </summary>
         /// <param name="value">A number of years. The value parameter can be negative or positive.</param>
         /// <returns>An object whose value is the sum of the date represented by this instance and the number of years represented by value.</returns>
-        public DateOnly AddYears(int value) => new DateOnly(DayNumberFromDateTime(GetEquivalentDateTime().AddYears(value)));
+        public DateOnly AddYears(int value) => FromDateTime(GetEquivalentDateTime().AddYears(value));
 
         /// <summary>
         /// Determines whether two specified instances of DateOnly are equal.
@@ -194,7 +191,7 @@ namespace System
         /// </summary>
         /// <param name="time">The time of the day.</param>
         /// <returns>The DateTime instance composed of the date of the current DateOnly instance and the time specified by the input time.</returns>
-        public DateTime ToDateTime(TimeOnly time) => new DateTime(_dayNumber * TimeSpan.TicksPerDay + time.Ticks);
+        public DateTime ToDateTime(TimeOnly time) => DateTime.UnsafeCreate(_dayNumber * TimeSpan.TicksPerDay + time.Ticks);
 
         /// <summary>
         /// Returns a DateTime instance with the specified input kind that is set to the date of this DateOnly instance and the time of specified input time.
@@ -252,7 +249,7 @@ namespace System
         /// Returns the hash code for this instance.
         /// </summary>
         /// <returns>A 32-bit signed integer hash code.</returns>
-        public override int GetHashCode() => _dayNumber;
+        public override int GetHashCode() => (int)_dayNumber;
 
         private const ParseFlags ParseFlagsDateMask = ParseFlags.HaveHour | ParseFlags.HaveMinute | ParseFlags.HaveSecond | ParseFlags.HaveTime | ParseFlags.TimeZoneUsed |
                                                       ParseFlags.TimeZoneUtc | ParseFlags.CaptureOffset | ParseFlags.UtcSortPattern;
@@ -438,7 +435,7 @@ namespace System
                 return ParseFailureKind.WrongParts;
             }
 
-            result = new DateOnly(DayNumberFromDateTime(dtResult.parsedDate));
+            result = FromDateTime(dtResult.parsedDate);
             return ParseFailureKind.None;
         }
 
@@ -505,7 +502,7 @@ namespace System
                 return ParseFailureKind.WrongParts;
             }
 
-            result = new DateOnly(DayNumberFromDateTime(dtResult.parsedDate));
+            result = FromDateTime(dtResult.parsedDate);
 
             return ParseFailureKind.None;
         }
@@ -575,7 +572,7 @@ namespace System
                 dtResult.Init(s);
                 if (DateTimeParse.TryParseExact(s, format, dtfiToUse, style, ref dtResult) && ((dtResult.flags & ParseFlagsDateMask) == 0))
                 {
-                    result = new DateOnly(DayNumberFromDateTime(dtResult.parsedDate));
+                    result = FromDateTime(dtResult.parsedDate);
                     return ParseFailureKind.None;
                 }
             }
@@ -739,7 +736,7 @@ namespace System
                     case 'O':
                         return string.Create(10, this, (destination, value) =>
                         {
-                            bool b = DateTimeFormat.TryFormatDateOnlyO(value.Year, value.Month, value.Day, destination);
+                            bool b = DateTimeFormat.TryFormatDateOnlyO(value.GetEquivalentDateTime(), destination);
                             Debug.Assert(b);
                         });
 
@@ -747,7 +744,7 @@ namespace System
                     case 'R':
                         return string.Create(16, this, (destination, value) =>
                         {
-                            bool b = DateTimeFormat.TryFormatDateOnlyR(value.DayOfWeek, value.Year, value.Month, value.Day, destination);
+                            bool b = DateTimeFormat.TryFormatDateOnlyR(value.DayOfWeek, value.GetEquivalentDateTime(), destination);
                             Debug.Assert(b);
                         });
 
@@ -789,7 +786,7 @@ namespace System
                 {
                     case 'o':
                     case 'O':
-                        if (!DateTimeFormat.TryFormatDateOnlyO(Year, Month, Day, destination))
+                        if (!DateTimeFormat.TryFormatDateOnlyO(GetEquivalentDateTime(), destination))
                         {
                             charsWritten = 0;
                             return false;
@@ -800,7 +797,7 @@ namespace System
                     case 'r':
                     case 'R':
 
-                        if (!DateTimeFormat.TryFormatDateOnlyR(DayOfWeek, Year, Month, Day, destination))
+                        if (!DateTimeFormat.TryFormatDateOnlyR(DayOfWeek, GetEquivalentDateTime(), destination))
                         {
                             charsWritten = 0;
                             return false;

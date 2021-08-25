@@ -319,20 +319,21 @@ namespace System.Globalization
                 resultBuilderIsPooled = true;
             }
 
-            int day = (int)(value.Ticks / TimeSpan.TicksPerDay);
-            long time = value.Ticks % TimeSpan.TicksPerDay;
+            int day = value.Days;
+            long time = value.Ticks - day * TimeSpan.TicksPerDay;
 
             if (value.Ticks < 0)
             {
                 day = -day;
                 time = -time;
             }
-            int hours = (int)(time / TimeSpan.TicksPerHour % 24);
-            int minutes = (int)(time / TimeSpan.TicksPerMinute % 60);
-            int seconds = (int)(time / TimeSpan.TicksPerSecond % 60);
-            int fraction = (int)(time % TimeSpan.TicksPerSecond);
+            uint seconds = (uint)((ulong)time / TimeSpan.TicksPerSecond);
+            uint fraction = (uint)(time - seconds * TimeSpan.TicksPerSecond);
+            uint minutes = seconds / 60;
+            seconds -= minutes * 60;
+            uint hours = minutes / 60;
+            minutes -= hours * 60;
 
-            long tmp = 0;
             int i = 0;
             int tokenLen;
 
@@ -348,7 +349,7 @@ namespace System.Globalization
                         {
                             goto default; // to release the builder and throw
                         }
-                        DateTimeFormat.FormatDigits(result, hours, tokenLen);
+                        DateTimeFormat.FormatDigits(result, (int)hours, tokenLen);
                         break;
                     case 'm':
                         tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
@@ -356,7 +357,7 @@ namespace System.Globalization
                         {
                             goto default; // to release the builder and throw
                         }
-                        DateTimeFormat.FormatDigits(result, minutes, tokenLen);
+                        DateTimeFormat.FormatDigits(result, (int)minutes, tokenLen);
                         break;
                     case 's':
                         tokenLen = DateTimeFormat.ParseRepeatPattern(format, i, ch);
@@ -364,7 +365,7 @@ namespace System.Globalization
                         {
                             goto default; // to release the builder and throw
                         }
-                        DateTimeFormat.FormatDigits(result, seconds, tokenLen);
+                        DateTimeFormat.FormatDigits(result, (int)seconds, tokenLen);
                         break;
                     case 'f':
                         //
@@ -376,8 +377,7 @@ namespace System.Globalization
                             goto default; // to release the builder and throw
                         }
 
-                        tmp = fraction;
-                        tmp /= TimeSpanParse.Pow10(DateTimeFormat.MaxSecondsFractionDigits - tokenLen);
+                        uint tmp = fraction / (uint)TimeSpanParse.Pow10(DateTimeFormat.MaxSecondsFractionDigits - tokenLen);
                         result.AppendSpanFormattable(tmp, DateTimeFormat.fixedNumberFormats[tokenLen - 1], CultureInfo.InvariantCulture);
                         break;
                     case 'F':
@@ -390,8 +390,7 @@ namespace System.Globalization
                             goto default; // to release the builder and throw
                         }
 
-                        tmp = fraction;
-                        tmp /= TimeSpanParse.Pow10(DateTimeFormat.MaxSecondsFractionDigits - tokenLen);
+                        tmp = fraction / (uint)TimeSpanParse.Pow10(DateTimeFormat.MaxSecondsFractionDigits - tokenLen);
                         int effectiveDigits = tokenLen;
                         while (effectiveDigits > 0)
                         {

@@ -78,7 +78,12 @@ namespace System
 
         public TimeSpan(int hours, int minutes, int seconds)
         {
-            _ticks = TimeToTicks(hours, minutes, seconds);
+            // totalSeconds is bounded by 2^31 * 2^12 + 2^31 * 2^8 + 2^31,
+            // which is less than 2^44, meaning we won't overflow totalSeconds.
+            long totalSeconds = (long)hours * 3600 + (long)minutes * 60 + seconds;
+            if (totalSeconds > MaxSeconds || totalSeconds < MinSeconds)
+                ThrowHelper.ThrowArgumentOutOfRange_TimeSpanTooLong();
+            _ticks = totalSeconds * TicksPerSecond;
         }
 
         public TimeSpan(int days, int hours, int minutes, int seconds)
@@ -98,7 +103,7 @@ namespace System
 
         public int Days => (int)(_ticks / TicksPerDay);
 
-        public int Hours => (int)((_ticks / TicksPerHour) % 24);
+        public int Hours => (int)(_ticks / TicksPerHour) % 24;
 
         public int Milliseconds => (int)((_ticks / TicksPerMillisecond) % 1000);
 
@@ -178,7 +183,7 @@ namespace System
 
         public TimeSpan Duration()
         {
-            if (Ticks == TimeSpan.MinValue.Ticks)
+            if (_ticks == long.MinValue)
                 throw new OverflowException(SR.Overflow_Duration);
             return new TimeSpan(_ticks >= 0 ? _ticks : -_ticks);
         }
@@ -241,7 +246,7 @@ namespace System
 
         public TimeSpan Negate()
         {
-            if (Ticks == TimeSpan.MinValue.Ticks)
+            if (_ticks == long.MinValue)
                 throw new OverflowException(SR.Overflow_NegateTwosCompNum);
             return new TimeSpan(-_ticks);
         }
@@ -271,17 +276,6 @@ namespace System
         public static TimeSpan FromTicks(long value)
         {
             return new TimeSpan(value);
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static long TimeToTicks(int hour, int minute, int second)
-        {
-            // totalSeconds is bounded by 2^31 * 2^12 + 2^31 * 2^8 + 2^31,
-            // which is less than 2^44, meaning we won't overflow totalSeconds.
-            long totalSeconds = (long)hour * 3600 + (long)minute * 60 + (long)second;
-            if (totalSeconds > MaxSeconds || totalSeconds < MinSeconds)
-                ThrowHelper.ThrowArgumentOutOfRange_TimeSpanTooLong();
-            return totalSeconds * TicksPerSecond;
         }
 
         // See System.Globalization.TimeSpanParse and System.Globalization.TimeSpanFormat
@@ -450,7 +444,7 @@ namespace System
 
         public static TimeSpan operator -(TimeSpan t)
         {
-            if (t._ticks == TimeSpan.MinValue._ticks)
+            if (t._ticks == long.MinValue)
                 throw new OverflowException(SR.Overflow_NegateTwosCompNum);
             return new TimeSpan(-t._ticks);
         }
