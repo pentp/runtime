@@ -2034,7 +2034,7 @@ namespace System
         /// <summary>
         /// Helper function that validates the TimeSpan is within +/- 14.0 hours
         /// </summary>
-        internal static bool UtcOffsetOutOfRange(TimeSpan offset) =>
+        private static bool UtcOffsetOutOfRange(TimeSpan offset) =>
             offset.Ticks < MinOffsetTicks || offset.Ticks > MaxOffsetTicks;
 
         private static TimeSpan GetUtcOffset(TimeSpan baseUtcOffset, AdjustmentRule adjustmentRule)
