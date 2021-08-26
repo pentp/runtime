@@ -73,7 +73,7 @@ namespace System
         {
             Debug.Assert(validOffsetMinutes is >= MinOffsetMinutes and <= MaxOffsetMinutes);
             Debug.Assert(validDateTime.Kind == DateTimeKind.Unspecified);
-            Debug.Assert((ulong)(validDateTime.Ticks + Offset.Ticks) <= DateTime.MaxTicks);
+            Debug.Assert((ulong)(validDateTime.Ticks + validOffsetMinutes * TimeSpan.TicksPerMinute)) <= DateTime.MaxTicks);
             _dateTime = validDateTime;
             _offsetMinutes = validOffsetMinutes;
         }
