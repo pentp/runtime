@@ -166,9 +166,9 @@ namespace System.IO
         {
             // File and Directory UTC APIs treat a DateTimeKind.Unspecified as UTC whereas
             // ToUniversalTime treats this as local.
-            if (dateTime.Kind == DateTimeKind.Unspecified)
+            if (dateTime.Kind != DateTimeKind.Local)
             {
-                return DateTime.SpecifyKind(dateTime, DateTimeKind.Utc);
+                return new DateTimeOffset(dateTime.Ticks, default);
             }
 
             return dateTime.ToUniversalTime();
