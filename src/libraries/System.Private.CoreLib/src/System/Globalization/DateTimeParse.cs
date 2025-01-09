@@ -2510,11 +2510,7 @@ namespace System
             DateTimeToken dtok = default;      // The buffer to store the parsing token.
             dtok.suffix = TokenType.SEP_Unk;
             DateTimeRawInfo raw = default;    // The buffer to store temporary parsing information.
-            unsafe
-            {
-                int* numberPointer = stackalloc int[3];
-                raw.Init(numberPointer);
-            }
+            raw.Init();
             raw.hasSameDateAndTimeSeparators = dtfi.DateSeparator.Equals(dtfi.TimeSeparator, StringComparison.Ordinal);
 
             result.calendar = dtfi.Calendar;
@@ -5967,25 +5963,21 @@ namespace System
     //
     internal unsafe struct DateTimeRawInfo
     {
-        private int* num;
-        internal int numCount;
+        private fixed int num[3];
+        internal uint numCount;
         internal int month;
         internal int year;
         internal int dayOfWeek;
-        internal int era;
         internal DateTimeParse.TM timeMark;
         internal double fraction;
         internal bool hasSameDateAndTimeSeparators;
 
-        internal void Init(int* numberBuffer)
+        internal void Init()
         {
             month = -1;
             year = -1;
             dayOfWeek = -1;
-            era = -1;
             timeMark = DateTimeParse.TM.NotSet;
-            fraction = -1;
-            num = numberBuffer;
         }
 
         internal void AddNumber(int value)

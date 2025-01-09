@@ -38,7 +38,7 @@ namespace System.Globalization
             // 1911 from ChineseLunisolarCalendar
             384;
 
-        private static readonly int[,] s_yinfo =
+        private static readonly ushort[,] s_yinfo =
         {
              /*Y            LM        Lmon    Lday        DaysPerMonth    D1    D2    D3    D4    D5    D6    D7    D8    D9    D10    D11    D12    D13    #Days
              1912    */
@@ -217,7 +217,7 @@ namespace System.Globalization
             return _helper.GetGregorianYear(year, era);
         }
 
-        public TaiwanLunisolarCalendar()
+        public TaiwanLunisolarCalendar() : base(CalendarId.TAIWANLUNISOLAR)
         {
             _helper = new GregorianCalendarHelper(this, s_taiwanLunisolarEraInfo);
         }
@@ -225,8 +225,6 @@ namespace System.Globalization
         public override int GetEra(DateTime time) => _helper.GetEra(time);
 
         internal override CalendarId BaseCalendarID => CalendarId.TAIWAN;
-
-        internal override CalendarId ID => CalendarId.TAIWANLUNISOLAR;
 
         public override int[] Eras => _helper.Eras;
     }

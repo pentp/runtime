@@ -31,12 +31,10 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.SolarCalendar;
 
-        public ThaiBuddhistCalendar()
+        public ThaiBuddhistCalendar() : base(CalendarId.THAI)
         {
             _helper = new GregorianCalendarHelper(this, s_thaiBuddhistEraInfo);
         }
-
-        internal override CalendarId ID => CalendarId.THAI;
 
         public override DateTime AddMonths(DateTime time, int months)
         {

@@ -84,7 +84,7 @@ namespace System.Globalization
 
         internal static Calendar GetDefaultInstance() => s_defaultInstance ??= new JapaneseCalendar();
 
-        public JapaneseCalendar()
+        public JapaneseCalendar() : base(CalendarId.JAPAN)
         {
             try
             {
@@ -97,8 +97,6 @@ namespace System.Globalization
 
             _helper = new GregorianCalendarHelper(this, GetEraInfo());
         }
-
-        internal override CalendarId ID => CalendarId.JAPAN;
 
         public override DateTime AddMonths(DateTime time, int months)
         {

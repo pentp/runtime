@@ -10,10 +10,6 @@ namespace System.Globalization
         private const int Jan1Date = 2;
         private const int nDaysPerMonth = 3;
 
-        // # of days so far in the solar year
-        private static ReadOnlySpan<int> DaysToMonth365 => [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
-        private static ReadOnlySpan<int> DaysToMonth366 => [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
-
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.LunisolarCalendar;
 
         /// <summary>
@@ -134,7 +130,7 @@ namespace System.Globalization
             throw new ArgumentOutOfRangeException(nameof(era), era, SR.ArgumentOutOfRange_InvalidEraValue);
         }
 
-        internal EastAsianLunisolarCalendar()
+        internal EastAsianLunisolarCalendar(CalendarId id) : base(id)
         {
         }
 
@@ -223,20 +219,6 @@ namespace System.Globalization
             return InternalGetDaysInMonth(year, month);
         }
 
-        private static bool GregorianIsLeapYear(int y)
-        {
-            if ((y % 4) != 0)
-            {
-                return false;
-            }
-            if ((y % 100) != 0)
-            {
-                return true;
-            }
-
-            return (y % 400) == 0;
-        }
-
         /// <summary>
         /// Returns the date and time converted to a DateTime value.
         /// Throws an exception if the n-tuple is invalid.
@@ -267,12 +249,12 @@ namespace System.Globalization
         /// </summary>
         private void GregorianToLunar(int solarYear, int solarMonth, int solarDate, out int lunarYear, out int lunarMonth, out int lunarDate)
         {
-            bool isLeapYear = GregorianIsLeapYear(solarYear);
+            bool isLeapYear = DateTime.IsLeapYear(solarYear);
             int jan1Month;
             int jan1Date;
 
             // Calculate the day number in the solar year.
-            int solarDay = isLeapYear ? DaysToMonth366[solarMonth - 1] : DaysToMonth365[solarMonth - 1];
+            int solarDay = isLeapYear ? GregorianCalendar.DaysToMonth366[solarMonth - 1] : GregorianCalendar.DaysToMonth365[solarMonth - 1];
             solarDay += solarDate;
 
             // Calculate the day number in the lunar year.
@@ -281,7 +263,7 @@ namespace System.Globalization
             if (lunarYear == (MaxCalendarYear + 1))
             {
                 lunarYear--;
-                lunarDay += (GregorianIsLeapYear(lunarYear) ? 366 : 365);
+                lunarDay += (DateTime.IsLeapYear(lunarYear) ? 366 : 365);
                 jan1Month = GetYearInfo(lunarYear, Jan1Month);
                 jan1Date = GetYearInfo(lunarYear, Jan1Date);
             }
@@ -300,7 +282,7 @@ namespace System.Globalization
                     lunarYear--;
 
                     // add a solar year to the lunar day #
-                    lunarDay += (GregorianIsLeapYear(lunarYear) ? 366 : 365);
+                    lunarDay += (DateTime.IsLeapYear(lunarYear) ? 366 : 365);
 
                     // update the new start of year
                     jan1Month = GetYearInfo(lunarYear, Jan1Month);
@@ -313,7 +295,7 @@ namespace System.Globalization
             // part of the lunar year.  since this part is always in Jan or Feb,
             // we don't need to handle Leap Year (LY only affects March
             // and later).
-            lunarDay -= DaysToMonth365[jan1Month - 1];
+            lunarDay -= GregorianCalendar.DaysToMonth365[jan1Month - 1];
             lunarDay -= (jan1Date - 1);
 
             // convert the lunar day into a lunar month/date
@@ -360,8 +342,8 @@ namespace System.Globalization
             int jan1Date = GetYearInfo(lunarYear, Jan1Date);
 
             // calc the solar day of year of 1 Lunar day
-            bool isLeapYear = GregorianIsLeapYear(lunarYear);
-            ReadOnlySpan<int> days = isLeapYear ? DaysToMonth366 : DaysToMonth365;
+            bool isLeapYear = DateTime.IsLeapYear(lunarYear);
+            ReadOnlySpan<int> days = isLeapYear ? GregorianCalendar.DaysToMonth366 : GregorianCalendar.DaysToMonth365;
 
             solarDay = jan1Date;
 
@@ -398,17 +380,12 @@ namespace System.Globalization
         private DateTime LunarToTime(DateTime time, int year, int month, int day)
         {
             LunarToGregorian(year, month, day, out int gy, out int gm, out int gd);
-            time.GetTime(out int hour, out int minute, out int second, out int millisecond);
-            return GregorianCalendar.GetDefaultInstance().ToDateTime(gy, gm, gd, hour, minute, second, millisecond);
+            return new DateTime(gy, gm, gd) + time.TimeOfDay;
         }
 
         private void TimeToLunar(DateTime time, out int year, out int month, out int day)
         {
-            Calendar gregorianCalendar = GregorianCalendar.GetDefaultInstance();
-            int gy = gregorianCalendar.GetYear(time);
-            int gm = gregorianCalendar.GetMonth(time);
-            int gd = gregorianCalendar.GetDayOfMonth(time);
-
+            time.GetDate(out int gy, out int gm, out int gd);
             GregorianToLunar(gy, gm, gd, out year, out month, out day);
         }
 

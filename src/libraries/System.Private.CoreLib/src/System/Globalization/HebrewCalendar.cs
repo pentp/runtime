@@ -282,11 +282,9 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.LunisolarCalendar;
 
-        public HebrewCalendar()
+        public HebrewCalendar() : base(CalendarId.HEBREW)
         {
         }
-
-        internal override CalendarId ID => CalendarId.HEBREW;
 
         private static void CheckHebrewYearValue(int y, int era, string varName)
         {
@@ -436,16 +434,13 @@ namespace System.Globalization
         {
             // The Gregorian year, month, day value for ticks.
             int hebrewYearType;                // lunar year type
-            long AbsoluteDate;                // absolute date - absolute date 1/1/1600
 
             // Make sure we have a valid Gregorian date that will fit into our
             // Hebrew conversion limits.
             CheckTicksRange(ticks);
 
             DateTime time = new DateTime(ticks);
-
-            // Save the Gregorian date values.
-            time.GetDate(out int gregorianYear, out int gregorianMonth, out int gregorianDay);
+            int gregorianYear = time.Year;
 
             DateBuffer lunarDate = new DateBuffer();    // lunar month and day for Jan 1
 
@@ -462,17 +457,14 @@ namespace System.Globalization
             result.month = lunarDate.month;
             result.day = lunarDate.day;
 
-            // Get the absolute date from 1/1/1600.
-            AbsoluteDate = GregorianCalendar.GetAbsoluteDate(gregorianYear, gregorianMonth, gregorianDay);
+            // Calculate the number of days between 1/1 and the requested date.
+            long numDays = time.DayOfYear - 1;
 
             // If the requested date was 1/1, then we're done.
-            if ((gregorianMonth == 1) && (gregorianDay == 1))
+            if (numDays == 0)
             {
                 return GetResult(result, part);
             }
-
-            // Calculate the number of days between 1/1 and the requested date.
-            long numDays = AbsoluteDate - GregorianCalendar.GetAbsoluteDate(gregorianYear, 1, 1);
 
             // If the requested date is within the current lunar month, then
             // we're done.

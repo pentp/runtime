@@ -205,39 +205,10 @@ namespace System.Globalization
         //
         public DateTime AddMonths(DateTime time, int months)
         {
-            if (months < -120000 || months > 120000)
-            {
-                throw new ArgumentOutOfRangeException(
-                            nameof(months),
-                            SR.Format(
-                                SR.ArgumentOutOfRange_Range,
-                                -120000,
-                                120000));
-            }
             CheckTicksRange(time.Ticks);
-
-            time.GetDate(out int y, out int m, out int d);
-            int i = m - 1 + months;
-            if (i >= 0)
-            {
-                m = i % 12 + 1;
-                y += i / 12;
-            }
-            else
-            {
-                m = 12 + (i + 1) % 12;
-                y += (i - 11) / 12;
-            }
-            ReadOnlySpan<int> daysArray = (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)) ? GregorianCalendar.DaysToMonth366 : GregorianCalendar.DaysToMonth365;
-            int days = (daysArray[m] - daysArray[m - 1]);
-
-            if (d > days)
-            {
-                d = days;
-            }
-            long ticks = GregorianCalendar.DateToTicks(y, m, d) + time.TimeOfDay.Ticks;
-            Calendar.CheckAddResult(ticks, m_Cal.MinSupportedDateTime, m_Cal.MaxSupportedDateTime);
-            return new DateTime(ticks);
+            time = time.AddMonths(months);
+            Calendar.CheckAddResult(time.Ticks, m_Cal.MinSupportedDateTime, m_Cal.MaxSupportedDateTime);
+            return time;
         }
 
         // Returns the DateTime resulting from adding the given number of
@@ -291,12 +262,7 @@ namespace System.Globalization
             // Convert year/era value to Gregorain year value.
             //
             year = GetGregorianYear(year, era);
-            if (month < 1 || month > 12)
-            {
-                ThrowHelper.ThrowArgumentOutOfRange_Month(month);
-            }
-            ReadOnlySpan<int> days = ((year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) ? GregorianCalendar.DaysToMonth366 : GregorianCalendar.DaysToMonth365);
-            return days[month] - days[month - 1];
+            return DateTime.DaysInMonth(year, month);
         }
 
         // Returns the number of days in the year given by the year argument for the current era.
@@ -467,7 +433,7 @@ namespace System.Globalization
         public DateTime ToDateTime(int year, int month, int day, int hour, int minute, int second, int millisecond, int era)
         {
             year = GetGregorianYear(year, era);
-            long ticks = GregorianCalendar.DateToTicks(year, month, day) + Calendar.TimeToTicks(hour, minute, second, millisecond);
+            long ticks = (long)DateTime.DateToTicks(year, month, day) + Calendar.TimeToTicks(hour, minute, second, millisecond);
             CheckTicksRange(ticks);
             return new DateTime(ticks);
         }

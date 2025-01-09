@@ -40,7 +40,7 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.SolarCalendar;
 
-        public KoreanCalendar()
+        public KoreanCalendar() : base(CalendarId.KOREA)
         {
             try
             {
@@ -53,9 +53,6 @@ namespace System.Globalization
 
             _helper = new GregorianCalendarHelper(this, s_koreanEraInfo);
         }
-
-        internal override CalendarId ID => CalendarId.KOREA;
-
 
         public override DateTime AddMonths(DateTime time, int months)
         {

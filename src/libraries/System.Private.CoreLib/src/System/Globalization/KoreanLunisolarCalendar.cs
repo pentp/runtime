@@ -32,7 +32,7 @@ namespace System.Globalization
         // Data for years 1391-2050 matches that available from
         // Korea Astronomy and Space Science Institute (KASI)
         // https://astro.kasi.re.kr:444/life/pageView/5
-        private static readonly int[,] s_yinfo =
+        private static readonly ushort[,] s_yinfo =
         {
 /*Y           LM  Lmon  Lday    DaysPerMonth               D1   D2   D3   D4   D5   D6   D7   D8   D9   D10  D11  D12  D13  #Days
 0918     */ { 00,   02,   19,   0b0101010110110000 }, /*   29   30   29   30   29   30   29   30   30   29   30   30        355
@@ -1215,7 +1215,7 @@ namespace System.Globalization
             return year;
         }
 
-        public KoreanLunisolarCalendar()
+        public KoreanLunisolarCalendar() : base(CalendarId.KOREANLUNISOLAR)
         {
         }
 
@@ -1226,8 +1226,6 @@ namespace System.Globalization
         }
 
         internal override CalendarId BaseCalendarID => CalendarId.KOREA;
-
-        internal override CalendarId ID => CalendarId.KOREANLUNISOLAR;
 
         public override int[] Eras => [GregorianEra];
     }

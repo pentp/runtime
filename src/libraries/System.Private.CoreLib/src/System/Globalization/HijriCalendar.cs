@@ -67,11 +67,9 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.LunarCalendar;
 
-        public HijriCalendar()
+        public HijriCalendar() : base(CalendarId.HIJRI)
         {
         }
-
-        internal override CalendarId ID => CalendarId.HIJRI;
 
         protected override int DaysInYearBeforeMinSupportedYear =>
             // the year before the 1st year of the cycle would have been the 30th year

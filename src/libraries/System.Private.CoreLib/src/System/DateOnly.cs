@@ -55,7 +55,7 @@ namespace System
         /// <param name="year">The year (1 through 9999).</param>
         /// <param name="month">The month (1 through 12).</param>
         /// <param name="day">The day (1 through the number of days in <paramref name="month" />).</param>
-        public DateOnly(int year, int month, int day) => _dayNumber = DayNumberFromDateTime(new DateTime(year, month, day));
+        public DateOnly(int year, int month, int day) => _dayNumber = DateTime.GetAbsoluteDate(year, month, day);
 
         /// <summary>
         /// Creates a new instance of the DateOnly structure to the specified year, month, and day for the specified calendar.

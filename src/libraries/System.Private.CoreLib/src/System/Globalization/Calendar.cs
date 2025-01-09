@@ -44,7 +44,9 @@ namespace System.Globalization
         {
         }
 
-        internal virtual CalendarId ID => CalendarId.UNINITIALIZED_VALUE;
+        internal Calendar(CalendarId id) => ID = id;
+
+        internal CalendarId ID;
 
         // Return the Base calendar ID for calendars that didn't have defined data in calendarData
         internal virtual CalendarId BaseCalendarID => ID;
@@ -612,7 +614,7 @@ namespace System.Globalization
             return year >= GetYear(MinSupportedDateTime) && year <= GetYear(MaxSupportedDateTime);
         }
 
-        internal virtual bool IsValidMonth(int year, int month, int era)
+        private bool IsValidMonth(int year, int month, int era)
         {
             return IsValidYear(year, era) && month >= 1 && month <= GetMonthsInYear(year, era);
         }
@@ -665,22 +667,7 @@ namespace System.Globalization
         /// Will check the if the parameters are valid.
         /// </summary>
         internal static long TimeToTicks(int hour, int minute, int second, int millisecond)
-        {
-            if ((uint)hour >= 24 || (uint)minute >= 60 || (uint)second >= 60)
-            {
-                throw new ArgumentOutOfRangeException(null, SR.ArgumentOutOfRange_BadHourMinuteSecond);
-            }
-            if ((uint)millisecond >= TimeSpan.MillisecondsPerSecond)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(millisecond),
-                    millisecond,
-                    SR.Format(SR.ArgumentOutOfRange_Range, 0, TimeSpan.MillisecondsPerSecond - 1));
-            }
-
-            int totalSeconds = hour * 3600 + minute * 60 + second;
-            return totalSeconds * TimeSpan.TicksPerSecond + millisecond * TimeSpan.TicksPerMillisecond;
-        }
+            => (long)DateTime.TimeToTicks(hour, minute, second, millisecond);
 
         internal static int GetSystemTwoDigitYearSetting(CalendarId CalID, int defaultYearValue)
         {

@@ -144,16 +144,6 @@ namespace System
         private static readonly string[] s_invariantAbbreviatedMonthNames = InvariantFormatInfo.AbbreviatedMonthNames;
         private static readonly string[] s_invariantAbbreviatedDayNames = InvariantFormatInfo.AbbreviatedDayNames;
 
-        internal static readonly string[] fixedNumberFormats = [
-            "0",
-            "00",
-            "000",
-            "0000",
-            "00000",
-            "000000",
-            "0000000",
-        ];
-
         /// <summary>Format the positive integer value to a string and prefix with assigned length of leading zero.</summary>
         /// <typeparam name="TChar">The type of the character.</typeparam>
         /// <param name="outputBuffer">The buffer into which to write the digits.</param>
@@ -430,9 +420,6 @@ namespace System
         {
             Calendar cal = dtfi.Calendar;
 
-            // This is a flag to indicate if we are formatting the dates using Hebrew calendar.
-            bool isHebrewCalendar = (cal.ID == CalendarId.HEBREW);
-            bool isJapaneseCalendar = (cal.ID == CalendarId.JAPAN);
             // This is a flag to indicate if we are formatting hour/minute/second only.
             bool bTimeOnly = true;
 
@@ -488,7 +475,7 @@ namespace System
                             fraction /= TimeSpanParse.Pow10UpToMaxFractionDigits(MaxSecondsFractionDigits - tokenLen);
                             if (ch == 'f')
                             {
-                                FormatFraction(ref result, fraction, fixedNumberFormats[tokenLen - 1]);
+                                FormatDigits(ref result, fraction, tokenLen);
                             }
                             else
                             {
@@ -507,7 +494,7 @@ namespace System
                                 }
                                 if (effectiveDigits > 0)
                                 {
-                                    FormatFraction(ref result, fraction, fixedNumberFormats[effectiveDigits - 1]);
+                                    FormatDigits(ref result, fraction, effectiveDigits);
                                 }
                                 else
                                 {
@@ -552,7 +539,7 @@ namespace System
                         if (tokenLen <= 2)
                         {
                             int day = cal.GetDayOfMonth(dateTime);
-                            if (isHebrewCalendar)
+                            if (cal.ID == CalendarId.HEBREW)
                             {
                                 // For Hebrew calendar, we need to convert numbers to Hebrew text for yyyy, MM, and dd values.
                                 HebrewNumber.Append(ref result, day);
@@ -579,7 +566,7 @@ namespace System
                         int month = cal.GetMonth(dateTime);
                         if (tokenLen <= 2)
                         {
-                            if (isHebrewCalendar)
+                            if (cal.ID == CalendarId.HEBREW)
                             {
                                 // For Hebrew calendar, we need to convert numbers to Hebrew text for yyyy, MM, and dd values.
                                 HebrewNumber.Append(ref result, month);
@@ -591,7 +578,7 @@ namespace System
                         }
                         else
                         {
-                            if (isHebrewCalendar)
+                            if (cal.ID == CalendarId.HEBREW)
                             {
                                 AppendString(ref result, FormatHebrewMonthName(dateTime, month, tokenLen, dtfi));
                             }
@@ -622,7 +609,7 @@ namespace System
 
                         int year = cal.GetYear(dateTime);
                         tokenLen = ParseRepeatPattern(format, i, ch);
-                        if (isJapaneseCalendar &&
+                        if (cal.ID == CalendarId.JAPAN &&
                             !LocalAppContextSwitches.FormatJapaneseFirstYearAsANumber &&
                             year == 1 &&
                             ((i + tokenLen < format.Length && format[i + tokenLen] == DateTimeFormatInfoScanner.CJKYearSuff) ||
@@ -653,7 +640,8 @@ namespace System
                             }
                             else
                             {
-                                AppendString(ref result, year.ToString("D" + tokenLen.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture));
+                                Number.TryUInt32ToDecStr((uint)year, tokenLen, result.AppendSpan(tokenLen), out int digitsWritten);
+                                Debug.Assert(digitsWritten == tokenLen);
                             }
                         }
                         bTimeOnly = false;
@@ -770,17 +758,6 @@ namespace System
                 Debug.Assert(typeof(TChar) == typeof(byte));
                 Encoding.UTF8.GetBytes(s, Unsafe.BitCast<Span<TChar>, Span<byte>>(result.AppendSpan(Encoding.UTF8.GetByteCount(s))));
             }
-        }
-
-        internal static void FormatFraction<TChar>(ref ValueListBuilder<TChar> result, int fraction, ReadOnlySpan<char> fractionFormat) where TChar : unmanaged, IUtfChar<TChar>
-        {
-            Span<TChar> chars = stackalloc TChar[11];
-            int charCount;
-            bool formatted = typeof(TChar) == typeof(char) ?
-                fraction.TryFormat(Unsafe.BitCast<Span<TChar>, Span<char>>(chars), out charCount, fractionFormat, CultureInfo.InvariantCulture) :
-                fraction.TryFormat(Unsafe.BitCast<Span<TChar>, Span<byte>>(chars), out charCount, fractionFormat, CultureInfo.InvariantCulture);
-            Debug.Assert(charCount != 0);
-            result.Append(chars.Slice(0, charCount));
         }
 
         // output the 'z' family of formats, which output a the offset from UTC, e.g. "-07:30"

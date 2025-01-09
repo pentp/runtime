@@ -47,13 +47,11 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.SolarCalendar;
 
-        public PersianCalendar()
+        public PersianCalendar() : base(CalendarId.PERSIAN)
         {
         }
 
         internal override CalendarId BaseCalendarID => CalendarId.GREGORIAN;
-
-        internal override CalendarId ID => CalendarId.PERSIAN;
 
         private static long GetAbsoluteDatePersian(int year, int month, int day)
         {

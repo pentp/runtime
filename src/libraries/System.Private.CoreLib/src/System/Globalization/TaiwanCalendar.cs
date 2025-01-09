@@ -41,7 +41,7 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.SolarCalendar;
 
-        public TaiwanCalendar()
+        public TaiwanCalendar() : base(CalendarId.TAIWAN)
         {
             try
             {
@@ -54,8 +54,6 @@ namespace System.Globalization
 
             _helper = new GregorianCalendarHelper(this, s_taiwanEraInfo);
         }
-
-        internal override CalendarId ID => CalendarId.TAIWAN;
 
         public override DateTime AddMonths(DateTime time, int months)
         {

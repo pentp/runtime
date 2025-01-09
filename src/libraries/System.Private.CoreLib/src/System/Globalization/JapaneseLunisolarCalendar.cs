@@ -33,7 +33,7 @@ namespace System.Globalization
         // Data for years 1960-2049 matches output of Calendrical Calculations [1] and published calendar tables [2].
         // [1] Reingold, Edward M, and Nachum Dershowitz. Calendrical Calculations: The Ultimate Edition. Cambridge [etc.: Cambridge University Press, 2018. Print.
         // [2] Nishizawa, Yu\u0304so\u0304. Rekijitsu Taikan: Meiji Kaireki 1873-Nen-2100-Nen Shinkyu\u0304reki, Kanshi Kyu\u0304sei Rokuyo\u0304 Taisho\u0304. To\u0304kyo\u0304: Shin Jinbutsu O\u0304raisha, 1994. Print.
-        private static readonly int[,] s_yinfo =
+        private static readonly ushort[,] s_yinfo =
         {
 /*Y           LM  Lmon  Lday    DaysPerMonth               D1   D2   D3   D4   D5   D6   D7   D8   D9   D10  D11  D12  D13  #Days
 1960     */ { 06,   01,   28,   0b1010110101010000 }, /*   30   29   30   29   30   30   29   30   29   30   29   30   29   384
@@ -199,7 +199,7 @@ namespace System.Globalization
             return newEras;
         }
 
-        public JapaneseLunisolarCalendar()
+        public JapaneseLunisolarCalendar() : base(CalendarId.JAPANESELUNISOLAR)
         {
             _helper = new GregorianCalendarHelper(this, TrimEras(JapaneseCalendar.GetEraInfo()));
         }
@@ -207,8 +207,6 @@ namespace System.Globalization
         public override int GetEra(DateTime time) => _helper.GetEra(time);
 
         internal override CalendarId BaseCalendarID => CalendarId.JAPAN;
-
-        internal override CalendarId ID => CalendarId.JAPANESELUNISOLAR;
 
         public override int[] Eras => _helper.Eras;
     }

@@ -36,7 +36,7 @@ namespace System.Globalization
         // by the Chinese to calculate the calendar from 1913 onwards (see warnings in [1]).
         // [2] Reingold, Edward M, and Nachum Dershowitz. Calendrical Calculations: The Ultimate Edition. Cambridge [etc.: Cambridge University Press, 2018. Print.
         // [3] Wang, Jianmin. Xin Bian Wan Nian Li: (1840-2050) Chong Bian Ben. Beijing: Ke xue pu ji chu ban she, 1990. Print.
-        private static readonly int[,] s_yinfo =
+        private static readonly ushort[,] s_yinfo =
         {
 /*Y           LM  Lmon  Lday    DaysPerMonth               D1   D2   D3   D4   D5   D6   D7   D8   D9   D10  D11  D12  D13  #Days
 1901     */ { 00,   02,   19,   0b0100101011100000 }, /*   29   30   29   29   30   29   30   29   30   30   30   29        354
@@ -280,7 +280,7 @@ namespace System.Globalization
             return year;
         }
 
-        public ChineseLunisolarCalendar()
+        public ChineseLunisolarCalendar() : base(CalendarId.CHINESELUNISOLAR)
         {
         }
 
@@ -289,8 +289,6 @@ namespace System.Globalization
             CheckTicksRange(time.Ticks);
             return ChineseEra;
         }
-
-        internal override CalendarId ID => CalendarId.CHINESELUNISOLAR;
 
         internal override CalendarId BaseCalendarID =>
             // Use CAL_GREGORIAN just to get CurrentEraValue as 1 since we do not have data under the ID CAL_ChineseLunisolar yet

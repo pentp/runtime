@@ -20,13 +20,11 @@ namespace System.Globalization
         // The limitation is derived from the DateTime class.
         internal const int MaxYear = 9999;
 
-        private GregorianCalendarTypes _type;
-
         internal static ReadOnlySpan<int> DaysToMonth365 => [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
 
         internal static ReadOnlySpan<int> DaysToMonth366 => [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366];
 
-        private static Calendar? s_defaultInstance;
+        private static readonly GregorianCalendar s_defaultInstance = new();
 
         public override DateTime MinSupportedDateTime => DateTime.MinValue;
 
@@ -38,82 +36,36 @@ namespace System.Globalization
         /// Internal method to provide a default instance of GregorianCalendar.
         /// Used by NLS+ implementation
         /// </summary>
-        internal static Calendar GetDefaultInstance() => s_defaultInstance ??= new GregorianCalendar();
+        internal static GregorianCalendar GetDefaultInstance() => s_defaultInstance;
 
-        public GregorianCalendar() : this(GregorianCalendarTypes.Localized)
+        public GregorianCalendar() : base(CalendarId.GREGORIAN)
         {
         }
 
-        public GregorianCalendar(GregorianCalendarTypes type)
-        {
-            if (type < GregorianCalendarTypes.Localized || type > GregorianCalendarTypes.TransliteratedFrench)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(type),
-                    type,
-                    SR.Format(SR.ArgumentOutOfRange_Range, GregorianCalendarTypes.Localized, GregorianCalendarTypes.TransliteratedFrench));
-            }
-
-            _type = type;
-        }
+        public GregorianCalendar(GregorianCalendarTypes type) => SetType(type);
 
         public virtual GregorianCalendarTypes CalendarType
         {
-            get => _type;
-            set
-            {
-                VerifyWritable();
-                if (value < GregorianCalendarTypes.Localized || value > GregorianCalendarTypes.TransliteratedFrench)
-                {
-                    throw new ArgumentOutOfRangeException(
-                        nameof(value),
-                        value,
-                        SR.Format(SR.ArgumentOutOfRange_Range, GregorianCalendarTypes.Localized, GregorianCalendarTypes.TransliteratedFrench));
-                }
-
-                _type = value;
-            }
+            get => (GregorianCalendarTypes)ID;
+            set => SetType(value);
         }
 
-        internal override CalendarId ID =>
+        private void SetType(GregorianCalendarTypes value)
+        {
+            VerifyWritable();
+            if (value < GregorianCalendarTypes.Localized || value > GregorianCalendarTypes.TransliteratedFrench)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value),
+                    value,
+                    SR.Format(SR.ArgumentOutOfRange_Range, GregorianCalendarTypes.Localized, GregorianCalendarTypes.TransliteratedFrench));
+            }
+
             // By returning different ID for different variations of GregorianCalendar,
             // we can support the Transliterated Gregorian calendar.
             // DateTimeFormatInfo will use this ID to get formatting information about
             // the calendar.
-            (CalendarId)_type;
-
-        /// <summary>
-        /// Gets the absolute date for the given Gregorian date. The absolute date means
-        /// the number of days from January 1st, 1 A.D.
-        /// </summary>
-        /// <remarks>
-        /// This is an internal method used by DateToTicks() and the calculations of Hijri and Hebrew calendars.
-        /// Number of Days in Prior Years (both common and leap years) +
-        /// Number of Days in Prior Months of Current Year +
-        /// Number of Days in Current Month
-        /// </remarks>
-        internal static long GetAbsoluteDate(int year, int month, int day)
-        {
-            if (year >= 1 && year <= MaxYear && month >= 1 && month <= 12)
-            {
-                ReadOnlySpan<int> days = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) ? DaysToMonth366 : DaysToMonth365;
-                if (day >= 1 && (day <= days[month] - days[month - 1]))
-                {
-                    int y = year - 1;
-                    return y * 365 + y / 4 - y / 100 + y / 400 + days[month - 1] + day - 1;
-                }
-            }
-
-            throw new ArgumentOutOfRangeException(null, SR.ArgumentOutOfRange_BadYearMonthDay);
-        }
-
-        /// <summary>
-        /// Returns the tick count corresponding to the given year, month, and day.
-        /// Will check the if the parameters are valid.
-        /// </summary>
-        internal static long DateToTicks(int year, int month, int day)
-        {
-            return GetAbsoluteDate(year, month, day) * TimeSpan.TicksPerDay;
+            ID = (CalendarId)value;
         }
 
         /// <summary>
@@ -136,38 +88,9 @@ namespace System.Globalization
         /// </summary>
         public override DateTime AddMonths(DateTime time, int months)
         {
-            if (months < -120000 || months > 120000)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(months),
-                    months,
-                    SR.Format(SR.ArgumentOutOfRange_Range, -120000, 120000));
-            }
-
-            time.GetDate(out int y, out int m, out int d);
-            int i = m - 1 + months;
-            if (i >= 0)
-            {
-                m = i % 12 + 1;
-                y += i / 12;
-            }
-            else
-            {
-                m = 12 + (i + 1) % 12;
-                y += (i - 11) / 12;
-            }
-
-            ReadOnlySpan<int> daysArray = (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)) ? DaysToMonth366 : DaysToMonth365;
-            int days = (daysArray[m] - daysArray[m - 1]);
-
-            if (d > days)
-            {
-                d = days;
-            }
-            long ticks = DateToTicks(y, m, d) + time.Ticks % TimeSpan.TicksPerDay;
-            CheckAddResult(ticks, MinSupportedDateTime, MaxSupportedDateTime);
-
-            return new DateTime(ticks);
+            time = time.AddMonths(months);
+            CheckAddResult(time.Ticks, MinSupportedDateTime, MaxSupportedDateTime);
+            return time;
         }
 
         /// <summary>
@@ -278,8 +201,7 @@ namespace System.Globalization
                 return false;
             }
 
-            ReadOnlySpan<int> days = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) ? DaysToMonth366 : DaysToMonth365;
-            return day <= (days[month] - days[month - 1]);
+            return day <= DateTime.DaysInMonth(year, month);
         }
 
         /// <summary>

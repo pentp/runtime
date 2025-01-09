@@ -41,13 +41,11 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.SolarCalendar;
 
-        public JulianCalendar()
+        public JulianCalendar() : base(CalendarId.JULIAN)
         {
             // There is no system setting of TwoDigitYear max, so set the value here.
             _twoDigitYearMax = 2049;
         }
-
-        internal override CalendarId ID => CalendarId.JULIAN;
 
         internal static void CheckEraRange(int era)
         {

@@ -249,13 +249,11 @@ namespace System.Globalization
 
         public override CalendarAlgorithmType AlgorithmType => CalendarAlgorithmType.LunarCalendar;
 
-        public UmAlQuraCalendar()
+        public UmAlQuraCalendar() : base(CalendarId.UMALQURA)
         {
         }
 
         internal override CalendarId BaseCalendarID => CalendarId.HIJRI;
-
-        internal override CalendarId ID => CalendarId.UMALQURA;
 
         protected override int DaysInYearBeforeMinSupportedYear =>
             // HijriCalendar has same number of days as UmAlQuraCalendar for any given year
@@ -287,7 +285,7 @@ namespace System.Globalization
         private static long GetAbsoluteDateUmAlQura(int year, int month, int day)
         {
             ConvertHijriToGregorian(year, month, day, out int yg, out int mg, out int dg);
-            return GregorianCalendar.GetAbsoluteDate(yg, mg, dg);
+            return (long)DateTime.GetAbsoluteDate(yg, mg, dg);
         }
 
         internal static void CheckTicksRange(long ticks)

@@ -1079,8 +1079,10 @@ namespace System
 
         // Returns the tick count corresponding to the given year, month, and day.
         // Will check the if the parameters are valid.
+        internal static ulong DateToTicks(int year, int month, int day) => GetAbsoluteDate(year, month, day) * (ulong)TimeSpan.TicksPerDay;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong DateToTicks(int year, int month, int day)
+        internal static uint GetAbsoluteDate(int year, int month, int day)
         {
             if (year < 1 || year > 9999 || month < 1 || month > 12 || day < 1)
             {
@@ -1093,8 +1095,7 @@ namespace System
                 ThrowHelper.ThrowArgumentOutOfRange_BadYearMonthDay();
             }
 
-            uint n = DaysToYear((uint)year) + days[month - 1] + (uint)day - 1;
-            return n * (ulong)TimeSpan.TicksPerDay;
+            return DaysToYear((uint)year) + days[month - 1] + (uint)day - 1;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
