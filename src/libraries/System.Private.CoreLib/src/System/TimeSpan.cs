@@ -883,12 +883,9 @@ namespace System
         public static TimeSpan operator -(TimeSpan t1, TimeSpan t2)
         {
             long result = t1._ticks - t2._ticks;
-            long t1Sign = t1._ticks >> 63;
-
-            if ((t1Sign != (t2._ticks >> 63)) && (t1Sign != (result >> 63)))
+            if (((t1._ticks ^ t2._ticks) & (t1._ticks ^ result)) < 0)
             {
                 // Overflow if signs of operands was different and result's sign was opposite.
-                // >> 63 gives the sign bit (either 64 1's or 64 0's).
                 ThrowHelper.ThrowOverflowException_TimeSpanTooLong();
             }
             return new TimeSpan(result);
@@ -899,12 +896,9 @@ namespace System
         public static TimeSpan operator +(TimeSpan t1, TimeSpan t2)
         {
             long result = t1._ticks + t2._ticks;
-            long t1Sign = t1._ticks >> 63;
-
-            if ((t1Sign == (t2._ticks >> 63)) && (t1Sign != (result >> 63)))
+            if ((~(t1._ticks ^ t2._ticks) & (t1._ticks ^ result)) < 0)
             {
                 // Overflow if signs of operands was identical and result's sign was opposite.
-                // >> 63 gives the sign bit (either 64 1's or 64 0's).
                 ThrowHelper.ThrowOverflowException_TimeSpanTooLong();
             }
             return new TimeSpan(result);

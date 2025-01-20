@@ -515,22 +515,22 @@ namespace System.Globalization
 
             internal bool SetBadQuoteFailure(char failingCharacter)
             {
-                if (!_throwOnFailure)
+                if (_throwOnFailure)
                 {
-                    return false;
+                    ThrowHelper.ThrowFormatException_BadQuote(failingCharacter);
                 }
 
-                throw new FormatException(SR.Format(SR.Format_BadQuote, failingCharacter));
+                return false;
             }
 
             internal bool SetInvalidStringFailure()
             {
-                if (!_throwOnFailure)
+                if (_throwOnFailure)
                 {
-                    return false;
+                    ThrowHelper.ThrowFormatInvalidString();
                 }
 
-                throw new FormatException(SR.Format_InvalidString);
+                return false;
             }
 
             internal bool SetArgumentNullFailure(string argumentName)
@@ -1330,7 +1330,8 @@ namespace System.Globalization
                     case '\'':
                     case '\"':
                         var enquotedString = new ValueStringBuilder(64);
-                        if (!DateTimeParse.TryParseQuoteString(format, i, ref enquotedString, out tokenLen))
+                        tokenLen = DateTimeParse.TryParseQuoteString(format, i, ref enquotedString);
+                        if (tokenLen == 0)
                         {
                             enquotedString.Dispose();
                             return result.SetBadQuoteFailure(ch);

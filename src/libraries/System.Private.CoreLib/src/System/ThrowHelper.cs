@@ -609,6 +609,12 @@ namespace System
         }
 
         [DoesNotReturn]
+        internal static void ThrowFormatException_BadQuote(char quoteChar)
+        {
+            throw new FormatException(SR.Format(SR.Format_BadQuote, quoteChar));
+        }
+
+        [DoesNotReturn]
         internal static void ThrowFormatException_NeedSingleChar()
         {
             throw new FormatException(SR.Format_NeedSingleChar);

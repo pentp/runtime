@@ -4342,7 +4342,8 @@ namespace System
                 case '\'':
                     var enquotedString = new ValueStringBuilder(stackalloc char[128]);
                     // Use ParseQuoteString so that we can handle escape characters within the quoted string.
-                    if (!TryParseQuoteString(format.Value, format.Index, ref enquotedString, out tokenLen))
+                    tokenLen = TryParseQuoteString(format.Value, format.Index, ref enquotedString);
+                    if (tokenLen == 0)
                     {
                         result.SetFailure(ParseFailureKind.Format_BadQuote, ch);
                         enquotedString.Dispose();
@@ -4477,20 +4478,19 @@ namespace System
         // The pos should point to a quote character. This method will
         // get the string enclosed by the quote character.
         //
-        internal static bool TryParseQuoteString(ReadOnlySpan<char> format, int pos, ref ValueStringBuilder result, out int returnValue)
+        internal static int TryParseQuoteString(ReadOnlySpan<char> format, int pos, ref ValueStringBuilder result)
         {
             // NOTE: pos will be the index of the quote character in the 'format' string.
             int beginPos = pos;
             char quoteChar = format[pos++]; // Get the character used to quote the following string.
 
-            bool foundQuote = false;
             while ((uint)pos < (uint)format.Length)
             {
                 char ch = format[pos++];
                 if (ch == quoteChar)
                 {
-                    foundQuote = true;
-                    break;
+                    // Return the character count including the begin/end quote characters and enclosed string.
+                    return pos - beginPos;
                 }
                 else if (ch == '\\')
                 {
@@ -4501,33 +4501,19 @@ namespace System
                     // because the second double quote is escaped.
                     if ((uint)pos < (uint)format.Length)
                     {
-                        result.Append(format[pos++]);
+                        ch = format[pos++];
                     }
                     else
                     {
                         // This means that '\' is at the end of the formatting string.
-                        returnValue = 0;
-                        return false;
+                        return 0;
                     }
                 }
-                else
-                {
-                    result.Append(ch);
-                }
+
+                result.Append(ch);
             }
 
-            if (!foundQuote)
-            {
-                // Here we can't find the matching quote.
-                returnValue = 0;
-                return false;
-            }
-
-            //
-            // Return the character count including the begin/end quote characters and enclosed string.
-            //
-            returnValue = (pos - beginPos);
-            return true;
+            return 0;
         }
 
         /*=================================DoStrictParse==================================

@@ -186,11 +186,11 @@ namespace System
 
         internal static int ParseRepeatPattern(ReadOnlySpan<char> format, int pos, char patternChar)
         {
-            int index = pos + 1;
-            while ((uint)index < (uint)format.Length && format[index] == patternChar)
+            int index = pos;
+            do
             {
                 index++;
-            }
+            } while ((uint)index < (uint)format.Length && format[index] == patternChar);
             return index - pos;
         }
 
@@ -276,18 +276,16 @@ namespace System
             //
             // NOTE : pos will be the index of the quote character in the 'format' string.
             //
-            int formatLen = format.Length;
             int beginPos = pos;
             char quoteChar = format[pos++]; // Get the character used to quote the following string.
 
-            bool foundQuote = false;
-            while (pos < formatLen)
+            while ((uint)pos < (uint)format.Length)
             {
                 char ch = format[pos++];
                 if (ch == quoteChar)
                 {
-                    foundQuote = true;
-                    break;
+                    // Return the character count including the begin/end quote characters and enclosed string.
+                    return pos - beginPos;
                 }
                 else if (ch == '\\')
                 {
@@ -296,34 +294,24 @@ namespace System
                     // Therefore, someone can use a format like "'minute:' mm\"" to display:
                     //  minute: 45"
                     // because the second double quote is escaped.
-                    if (pos < formatLen)
+                    if ((uint)pos < (uint)format.Length)
                     {
-                        result.Append(TChar.CastFrom(format[pos++]));
+                        ch = format[pos++];
                     }
                     else
                     {
                         //
                         // This means that '\' is at the end of the formatting string.
                         //
-                        throw new FormatException(SR.Format_InvalidString);
+                        ThrowHelper.ThrowFormatInvalidString();
                     }
                 }
-                else
-                {
-                    AppendChar(ref result, ch);
-                }
+
+                AppendChar(ref result, ch);
             }
 
-            if (!foundQuote)
-            {
-                // Here we can't find the matching quote.
-                throw new FormatException(SR.Format(SR.Format_BadQuote, quoteChar));
-            }
-
-            //
-            // Return the character count including the begin/end quote characters and enclosed string.
-            //
-            return pos - beginPos;
+            ThrowHelper.ThrowFormatException_BadQuote(quoteChar);
+            return 0;
         }
 
         //
@@ -426,7 +414,7 @@ namespace System
             int i = 0;
             int tokenLen, hour12;
 
-            while (i < format.Length)
+            while ((uint)i < (uint)format.Length)
             {
                 char ch = format[i];
                 int nextChar;
@@ -508,7 +496,7 @@ namespace System
                         }
                         else
                         {
-                            throw new FormatException(SR.Format_InvalidString);
+                            ThrowHelper.ThrowFormatInvalidString();
                         }
                         break;
 
@@ -691,7 +679,8 @@ namespace System
                             // This means that '%' is at the end of the format string or
                             // "%%" appears in the format string.
                             //
-                            throw new FormatException(SR.Format_InvalidString);
+                            ThrowHelper.ThrowFormatInvalidString();
+                            return;
                         }
                         break;
 
@@ -715,7 +704,8 @@ namespace System
                             //
                             // This means that '\' is at the end of the formatting string.
                             //
-                            throw new FormatException(SR.Format_InvalidString);
+                            ThrowHelper.ThrowFormatInvalidString();
+                            return;
                         }
                         break;
 
@@ -1137,7 +1127,7 @@ namespace System
             if (offset.Ticks != NullOffset)
             {
                 // This format is not supported by DateTimeOffset
-                throw new FormatException(SR.Format_InvalidString);
+                ThrowHelper.ThrowFormatInvalidString();
             }
 
             // Universal time is always in Gregorian calendar. Ensure Gregorian is used.
@@ -1152,45 +1142,37 @@ namespace System
 
         internal static bool IsValidCustomDateOnlyFormat(ReadOnlySpan<char> format, bool throwOnError)
         {
-            int i = 0;
-
-            while (i < format.Length)
+            for (int i = 0; (uint)i < (uint)format.Length; i++)
             {
                 switch (format[i])
                 {
                     case '\\':
-                        if (i == format.Length - 1)
+                        if (++i == format.Length)
                         {
                             if (throwOnError)
                             {
-                                throw new FormatException(SR.Format_InvalidString);
+                                ThrowHelper.ThrowFormatInvalidString();
                             }
 
                             return false;
                         }
-
-                        i += 2;
                         break;
 
                     case '\'':
                     case '"':
-                        char quoteChar = format[i++];
-                        while (i < format.Length && format[i] != quoteChar)
+                        char quoteChar = format[i];
+                        do
                         {
-                            i++;
-                        }
-
-                        if (i >= format.Length)
-                        {
-                            if (throwOnError)
+                            if ((uint)++i >= (uint)format.Length)
                             {
-                                throw new FormatException(SR.Format(SR.Format_BadQuote, quoteChar));
+                                if (throwOnError)
+                                {
+                                    ThrowHelper.ThrowFormatException_BadQuote(quoteChar);
+                                }
+
+                                return false;
                             }
-
-                            return false;
-                        }
-
-                        i++;
+                        } while (format[i] != quoteChar);
                         break;
 
                     case ':':
@@ -1206,14 +1188,10 @@ namespace System
                         // reject non-date formats
                         if (throwOnError)
                         {
-                            throw new FormatException(SR.Format_InvalidString);
+                            ThrowHelper.ThrowFormatInvalidString();
                         }
 
                         return false;
-
-                    default:
-                        i++;
-                        break;
                 }
             }
 
@@ -1223,46 +1201,37 @@ namespace System
 
         internal static bool IsValidCustomTimeOnlyFormat(ReadOnlySpan<char> format, bool throwOnError)
         {
-            int length = format.Length;
-            int i = 0;
-
-            while (i < length)
+            for (int i = 0; (uint)i < (uint)format.Length; i++)
             {
                 switch (format[i])
                 {
                     case '\\':
-                        if (i == length - 1)
+                        if (++i == format.Length)
                         {
                             if (throwOnError)
                             {
-                                throw new FormatException(SR.Format_InvalidString);
+                                ThrowHelper.ThrowFormatInvalidString();
                             }
 
                             return false;
                         }
-
-                        i += 2;
                         break;
 
                     case '\'':
                     case '"':
-                        char quoteChar = format[i++];
-                        while (i < length && format[i] != quoteChar)
+                        char quoteChar = format[i];
+                        do
                         {
-                            i++;
-                        }
-
-                        if (i >= length)
-                        {
-                            if (throwOnError)
+                            if ((uint)++i >= (uint)format.Length)
                             {
-                                throw new FormatException(SR.Format(SR.Format_BadQuote, quoteChar));
+                                if (throwOnError)
+                                {
+                                    ThrowHelper.ThrowFormatException_BadQuote(quoteChar);
+                                }
+
+                                return false;
                             }
-
-                            return false;
-                        }
-
-                        i++;
+                        } while (format[i] != quoteChar);
                         break;
 
                     case 'd':
@@ -1273,14 +1242,10 @@ namespace System
                     case 'k':
                         if (throwOnError)
                         {
-                            throw new FormatException(SR.Format_InvalidString);
+                            ThrowHelper.ThrowFormatInvalidString();
                         }
 
                         return false;
-
-                    default:
-                        i++;
-                        break;
                 }
             }
 
@@ -1742,7 +1707,8 @@ namespace System
                     results = [Format(dateTime, char.ToString(format), dtfi)];
                     break;
                 default:
-                    throw new FormatException(SR.Format_InvalidString);
+                    ThrowHelper.ThrowFormatInvalidString();
+                    return null!;
             }
             return results;
         }

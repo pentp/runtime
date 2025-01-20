@@ -37,7 +37,7 @@ namespace System.Globalization
                     return FormatG(value, DateTimeFormatInfo.GetInstance(formatProvider), c == 'G' ? StandardFormat.G : StandardFormat.g);
                 }
 
-                throw new FormatException(SR.Format_InvalidString);
+                ThrowHelper.ThrowFormatInvalidString();
             }
 
             var vlb = new ValueListBuilder<char>(stackalloc char[256]);
@@ -448,7 +448,8 @@ namespace System.Globalization
                         break;
                     default:
                         // Invalid format string
-                        throw new FormatException(SR.Format_InvalidString);
+                        ThrowHelper.ThrowFormatInvalidString();
+                        return;
                 }
                 i += tokenLen;
             }

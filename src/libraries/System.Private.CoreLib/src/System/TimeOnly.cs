@@ -918,30 +918,36 @@ namespace System
             {
                 format = "t";
             }
-
-            if (format.Length == 1)
+            else if (format.Length == 1)
             {
-                return (format[0] | 0x20) switch
+                switch (format[0] | 0x20)
                 {
-                    'o' => string.Create(16, this, (destination, value) =>
-                           {
-                               DateTimeFormat.TryFormatTimeOnlyO(value, destination, out int charsWritten);
-                               Debug.Assert(charsWritten == destination.Length);
-                           }),
+                    case 'o':
+                        return string.Create(16, this, (destination, value) =>
+                        {
+                            DateTimeFormat.TryFormatTimeOnlyO(value, destination, out int charsWritten);
+                            Debug.Assert(charsWritten == destination.Length);
+                        });
 
-                    'r' => string.Create(8, this, (destination, value) =>
-                           {
-                               DateTimeFormat.TryFormatTimeOnlyR(value, destination, out int charsWritten);
-                               Debug.Assert(charsWritten == destination.Length);
-                           }),
+                    case 'r':
+                        return string.Create(8, this, (destination, value) =>
+                        {
+                            DateTimeFormat.TryFormatTimeOnlyR(value, destination, out int charsWritten);
+                            Debug.Assert(charsWritten == destination.Length);
+                        });
 
-                    't' => DateTimeFormat.Format(ToDateTime(), format, provider),
+                    case 't': break;
 
-                    _ => throw new FormatException(SR.Format_InvalidString),
-                };
+                    default:
+                        ThrowHelper.ThrowFormatInvalidString();
+                        break;
+                }
+            }
+            else
+            {
+                DateTimeFormat.IsValidCustomTimeOnlyFormat(format.AsSpan(), throwOnError: true);
             }
 
-            DateTimeFormat.IsValidCustomTimeOnlyFormat(format.AsSpan(), throwOnError: true);
             return DateTimeFormat.Format(ToDateTime(), format, provider);
         }
 
@@ -955,44 +961,42 @@ namespace System
         /// <returns>true if the formatting was successful; otherwise, false.</returns>
         /// <remarks>The accepted standard formats are 'r', 'R', 'o', 'O', 't' and 'T'. </remarks>
         public bool TryFormat(Span<char> destination, out int charsWritten, [StringSyntax(StringSyntaxAttribute.TimeOnlyFormat)] ReadOnlySpan<char> format = default, IFormatProvider? provider = null) =>
-            TryFormatCore(destination, out charsWritten, format, provider);
+            TryFormatCore(this, destination, out charsWritten, format, provider);
 
         /// <inheritdoc cref="IUtf8SpanFormattable.TryFormat" />
         public bool TryFormat(Span<byte> utf8Destination, out int bytesWritten, [StringSyntax(StringSyntaxAttribute.TimeOnlyFormat)] ReadOnlySpan<char> format = default, IFormatProvider? provider = null) =>
-            TryFormatCore(utf8Destination, out bytesWritten, format, provider);
+            TryFormatCore(this, utf8Destination, out bytesWritten, format, provider);
 
-        private bool TryFormatCore<TChar>(Span<TChar> destination, out int written, [StringSyntax(StringSyntaxAttribute.TimeOnlyFormat)] ReadOnlySpan<char> format, IFormatProvider? provider) where TChar : unmanaged, IUtfChar<TChar>
+        private static bool TryFormatCore<TChar>(TimeOnly value, Span<TChar> destination, out int written, [StringSyntax(StringSyntaxAttribute.TimeOnlyFormat)] ReadOnlySpan<char> format, IFormatProvider? provider) where TChar : unmanaged, IUtfChar<TChar>
         {
             if (format.Length == 0)
             {
                 format = "t";
             }
-
-            if (format.Length == 1)
+            else if (format.Length == 1)
             {
                 switch (format[0] | 0x20)
                 {
                     case 'o':
-                        return DateTimeFormat.TryFormatTimeOnlyO(this, destination, out written);
+                        return DateTimeFormat.TryFormatTimeOnlyO(value, destination, out written);
 
                     case 'r':
-                        return DateTimeFormat.TryFormatTimeOnlyR(this, destination, out written);
+                        return DateTimeFormat.TryFormatTimeOnlyR(value, destination, out written);
 
                     case 't':
-                        return DateTimeFormat.TryFormat(ToDateTime(), destination, out written, format, provider);
+                        break;
 
                     default:
                         ThrowHelper.ThrowFormatException_BadFormatSpecifier();
                         break;
                 }
             }
-
-            if (!DateTimeFormat.IsValidCustomTimeOnlyFormat(format, throwOnError: false))
+            else if (!DateTimeFormat.IsValidCustomTimeOnlyFormat(format, throwOnError: false))
             {
-                throw new FormatException(SR.Format(SR.Format_DateTimeOnlyContainsNoneDateParts, format.ToString(), nameof(TimeOnly)));
+                ThrowOnError(ParseFailureKind.Format_DateTimeOnlyContainsNoneDateParts, format);
             }
 
-            return DateTimeFormat.TryFormat(ToDateTime(), destination, out written, format, provider);
+            return DateTimeFormat.TryFormat(value.ToDateTime(), destination, out written, format, provider);
         }
 
         //

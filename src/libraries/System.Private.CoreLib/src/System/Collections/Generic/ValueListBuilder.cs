@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace System.Collections.Generic
 {
@@ -46,14 +47,12 @@ namespace System.Collections.Generic
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Append(T item)
         {
-            int pos = _pos;
-
-            // Workaround for https://github.com/dotnet/runtime/issues/72004
-            Span<T> span = _span;
-            if ((uint)pos < (uint)span.Length)
+            nuint pos = (uint)_pos;
+            if ((uint)pos < (uint)_span.Length)
             {
-                span[pos] = item;
-                _pos = pos + 1;
+                // Workaround for https://github.com/dotnet/runtime/issues/72004
+                Unsafe.Add(ref MemoryMarshal.GetReference(_span), pos) = item;
+                _pos = (int)(uint)pos + 1;
             }
             else
             {

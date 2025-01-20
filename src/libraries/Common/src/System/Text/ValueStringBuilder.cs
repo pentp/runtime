@@ -171,12 +171,12 @@ namespace System.Text
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Append(char c)
         {
-            int pos = _pos;
-            Span<char> chars = _chars;
-            if ((uint)pos < (uint)chars.Length)
+            nuint pos = (uint)_pos;
+            if ((uint)pos < (uint)_chars.Length)
             {
-                chars[pos] = c;
-                _pos = pos + 1;
+                // Workaround for https://github.com/dotnet/runtime/issues/72004
+                Unsafe.Add(ref MemoryMarshal.GetReference(_chars), pos) = c;
+                _pos = (int)(uint)pos + 1;
             }
             else
             {
