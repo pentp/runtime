@@ -869,15 +869,14 @@ namespace System.Collections.Concurrent
 
             private readonly ConcurrentDictionary<TKey, TValue> _dictionary;
 
-            private ConcurrentDictionary<TKey, TValue>.VolatileNode[]? _buckets;
+            private VolatileNode[]? _buckets;
             private Node? _node;
             private int _i;
             private int _state;
 
             private const int StateUninitialized = 0;
-            private const int StateOuterloop = 1;
-            private const int StateInnerLoop = 2;
-            private const int StateDone = 3;
+            private const int StateInnerLoop = 1;
+            private const int StateDone = 2;
 
             public Enumerator(ConcurrentDictionary<TKey, TValue> dictionary)
             {
@@ -907,10 +906,9 @@ namespace System.Collections.Concurrent
                     case StateUninitialized:
                         _buckets = _dictionary._tables._buckets;
                         _i = -1;
-                        goto case StateOuterloop;
 
-                    case StateOuterloop:
-                        ConcurrentDictionary<TKey, TValue>.VolatileNode[]? buckets = _buckets;
+                    StateOuterloop:
+                        VolatileNode[]? buckets = _buckets;
                         Debug.Assert(buckets is not null);
 
                         int i = ++_i;
@@ -929,7 +927,7 @@ namespace System.Collections.Concurrent
                             _node = node._next;
                             return true;
                         }
-                        goto case StateOuterloop;
+                        goto StateOuterloop;
 
                     default:
                         _state = StateDone;
@@ -1675,7 +1673,7 @@ namespace System.Collections.Concurrent
         /// of the dictionary.  The contents exposed through the enumerator may contain modifications
         /// made to the dictionary after <see cref="GetEnumerator"/> was called.
         /// </remarks>
-        IEnumerator IEnumerable.GetEnumerator() => ((ConcurrentDictionary<TKey, TValue>)this).GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         #endregion
 
@@ -2319,9 +2317,9 @@ namespace System.Collections.Concurrent
         /// </summary>
         private sealed class DictionaryEnumerator : IDictionaryEnumerator
         {
-            private readonly IEnumerator<KeyValuePair<TKey, TValue>> _enumerator; // Enumerator over the dictionary.
+            private readonly Enumerator _enumerator; // Enumerator over the dictionary.
 
-            internal DictionaryEnumerator(ConcurrentDictionary<TKey, TValue> dictionary) => _enumerator = dictionary.GetEnumerator();
+            internal DictionaryEnumerator(ConcurrentDictionary<TKey, TValue> dictionary) => _enumerator = new Enumerator(dictionary);
 
             public DictionaryEntry Entry => new DictionaryEntry(_enumerator.Current.Key, _enumerator.Current.Value);
 
