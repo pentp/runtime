@@ -499,24 +499,24 @@ namespace System.Collections.Generic
                 {
                     index = set._freeList;
                     set._freeCount--;
-                    Debug.Assert((StartOfFreeList - entries![set._freeList].Next) >= -1, "shouldn't overflow because `next` cannot underflow");
-                    set._freeList = StartOfFreeList - entries[set._freeList].Next;
+                    Debug.Assert((StartOfFreeList - entries![index].Next) >= -1, "shouldn't overflow because `next` cannot underflow");
+                    set._freeList = StartOfFreeList - entries[index].Next;
                 }
                 else
                 {
-                    int count = set._count;
-                    if (count == entries.Length)
+                    index = set._count;
+                    if (index == entries.Length)
                     {
                         set.Resize();
                         bucket = ref set.GetBucketRef(hashCode);
+                        entries = set._entries!;
+                        index = set._count;
                     }
-                    index = count;
-                    set._count = count + 1;
-                    entries = set._entries;
+                    set._count = index + 1;
                 }
 
                 {
-                    ref Entry entry = ref entries![index];
+                    ref Entry entry = ref entries[index];
                     entry.HashCode = hashCode;
                     entry.Next = bucket - 1; // Value in _buckets is 1-based
                     entry.Value = mappedItem;
@@ -525,11 +525,11 @@ namespace System.Collections.Generic
                 }
 
                 // Value types never rehash
-                if (!typeof(T).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && comparer is NonRandomizedStringEqualityComparer)
+                if (!typeof(T).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && set._comparer is NonRandomizedStringEqualityComparer)
                 {
                     // If we hit the collision threshold we'll need to switch to the comparer which is using randomized string hashing
                     // i.e. EqualityComparer<string>.Default.
-                    set.Resize(entries.Length, forceNewHashCodes: true);
+                    set.ForceNewHashCodes();
                 }
 
                 return true;
@@ -1277,38 +1277,21 @@ namespace System.Collections.Generic
             }
 
             int newSize = HashHelpers.GetPrime(capacity);
-            Resize(newSize, forceNewHashCodes: false);
+            Resize(newSize);
             return newSize;
         }
 
-        private void Resize() => Resize(HashHelpers.ExpandPrime(_count), forceNewHashCodes: false);
+        private void Resize() => Resize(HashHelpers.ExpandPrime(_count));
 
-        private void Resize(int newSize, bool forceNewHashCodes)
+        private void Resize(int newSize)
         {
-            // Value types never rehash
-            Debug.Assert(!forceNewHashCodes || !typeof(T).IsValueType);
             Debug.Assert(_entries != null, "_entries should be non-null");
-            Debug.Assert(newSize >= _entries.Length);
+            Debug.Assert(newSize > _entries.Length);
 
             var entries = new Entry[newSize];
 
             int count = _count;
             Array.Copy(_entries, entries, count);
-
-            if (!typeof(T).IsValueType && forceNewHashCodes)
-            {
-                Debug.Assert(_comparer is NonRandomizedStringEqualityComparer);
-                IEqualityComparer<T> comparer = _comparer = (IEqualityComparer<T>)((NonRandomizedStringEqualityComparer)_comparer).GetRandomizedEqualityComparer();
-
-                for (int i = 0; i < count; i++)
-                {
-                    ref Entry entry = ref entries[i];
-                    if (entry.Next >= -1)
-                    {
-                        entry.HashCode = entry.Value != null ? comparer.GetHashCode(entry.Value) : 0;
-                    }
-                }
-            }
 
             // Assign member variables after both arrays allocated to guard against corruption from OOM if second fails
             _buckets = new int[newSize];
@@ -1327,6 +1310,28 @@ namespace System.Collections.Generic
             }
 
             _entries = entries;
+        }
+
+        private void ForceNewHashCodes()
+        {
+            // Value types never rehash
+            Debug.Assert(!typeof(T).IsValueType);
+            Debug.Assert(_comparer is NonRandomizedStringEqualityComparer);
+            IEqualityComparer<T> comparer = _comparer = (IEqualityComparer<T>)((NonRandomizedStringEqualityComparer)_comparer).GetRandomizedEqualityComparer();
+
+            Array.Clear(_buckets!);
+            Entry[] entries = _entries!;
+            for (int i = 0, count = _count; i < count; i++)
+            {
+                ref Entry entry = ref entries[i];
+                if (entry.Next >= -1)
+                {
+                    int hashCode = entry.HashCode = entry.Value != null ? comparer.GetHashCode(entry.Value) : 0;
+                    ref int bucket = ref GetBucketRef(hashCode);
+                    entry.Next = bucket - 1; // Value in _buckets is 1-based
+                    bucket = i + 1;
+                }
+            }
         }
 
         /// <summary>
@@ -1481,24 +1486,24 @@ namespace System.Collections.Generic
             {
                 index = _freeList;
                 _freeCount--;
-                Debug.Assert((StartOfFreeList - entries![_freeList].Next) >= -1, "shouldn't overflow because `next` cannot underflow");
-                _freeList = StartOfFreeList - entries[_freeList].Next;
+                Debug.Assert((StartOfFreeList - entries![index].Next) >= -1, "shouldn't overflow because `next` cannot underflow");
+                _freeList = StartOfFreeList - entries[index].Next;
             }
             else
             {
-                int count = _count;
-                if (count == entries.Length)
+                index = _count;
+                if (index == entries.Length)
                 {
                     Resize();
                     bucket = ref GetBucketRef(hashCode);
+                    entries = _entries!;
+                    index = _count;
                 }
-                index = count;
-                _count = count + 1;
-                entries = _entries;
+                _count = index + 1;
             }
 
             {
-                ref Entry entry = ref entries![index];
+                ref Entry entry = ref entries[index];
                 entry.HashCode = hashCode;
                 entry.Next = bucket - 1; // Value in _buckets is 1-based
                 entry.Value = value;
@@ -1508,13 +1513,11 @@ namespace System.Collections.Generic
             }
 
             // Value types never rehash
-            if (!typeof(T).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && comparer is NonRandomizedStringEqualityComparer)
+            if (!typeof(T).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && _comparer is NonRandomizedStringEqualityComparer)
             {
                 // If we hit the collision threshold we'll need to switch to the comparer which is using randomized string hashing
                 // i.e. EqualityComparer<string>.Default.
-                Resize(entries.Length, forceNewHashCodes: true);
-                location = FindItemIndex(value);
-                Debug.Assert(location >= 0);
+                ForceNewHashCodes();
             }
 
             return true;
@@ -1817,8 +1820,7 @@ namespace System.Collections.Generic
                     ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumFailedVersion();
                 }
 
-                // Use unsigned comparison since we set index to dictionary.count+1 when the enumeration ends.
-                // dictionary.count+1 could be negative if dictionary.count is int.MaxValue
+                // Use unsigned comparison since we set index to -1 when the enumeration ends.
                 while ((uint)_index < (uint)_hashSet._count)
                 {
                     ref Entry entry = ref _hashSet._entries![_index++];
@@ -1829,7 +1831,7 @@ namespace System.Collections.Generic
                     }
                 }
 
-                _index = _hashSet._count + 1;
+                _index = -1;
                 _current = default!;
                 return false;
             }
@@ -1842,7 +1844,7 @@ namespace System.Collections.Generic
             {
                 get
                 {
-                    if (_index == 0 || (_index == _hashSet._count + 1))
+                    if (_index <= 0)
                     {
                         ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen();
                     }
