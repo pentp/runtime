@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 
 namespace System.Buffers
 {
@@ -82,7 +83,7 @@ namespace System.Buffers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool FastContains(char[] hashEntries, uint multiplier, char value)
         {
-            ulong offset = FastMod(value, (uint)hashEntries.Length, multiplier);
+            uint offset = FastMod(value, (uint)hashEntries.Length, multiplier);
             Debug.Assert(offset < (ulong)hashEntries.Length);
 
             return Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(hashEntries), (nuint)offset) == value;
@@ -173,7 +174,7 @@ namespace System.Buffers
 
                 foreach (char c in values)
                 {
-                    ulong index = FastMod(c, (uint)modulus, multiplier);
+                    uint index = FastMod(c, (uint)modulus, multiplier);
 
                     if (seen[index])
                     {
@@ -216,11 +217,12 @@ namespace System.Buffers
 
         // This is a faster variant of HashHelpers.FastMod, specialized for smaller divisors (<= 65536).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong FastMod(char value, uint divisor, uint multiplier)
+        private static uint FastMod(char value, uint divisor, uint multiplier)
         {
             Debug.Assert(multiplier == GetFastModMultiplier(divisor));
 
-            ulong result = ((ulong)(multiplier * value) * divisor) >> 32;
+            uint result = Bmi2.IsSupported ? Bmi2.MultiplyNoFlags(multiplier * value, divisor)
+                : (uint)(((ulong)(multiplier * value) * divisor) >> 32);
 
             Debug.Assert(result == (value % divisor));
             return result;

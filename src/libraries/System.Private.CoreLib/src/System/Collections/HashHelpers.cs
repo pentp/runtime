@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.X86;
 
 namespace System.Collections
 {
@@ -104,7 +105,8 @@ namespace System.Collections
 
             // This is equivalent of (uint)Math.BigMul(multiplier * value, divisor, out _). This version
             // is faster than BigMul currently because we only need the high bits.
-            uint highbits = (uint)(((((multiplier * value) >> 32) + 1) * divisor) >> 32);
+            uint highbits = Bmi2.IsSupported ? Bmi2.MultiplyNoFlags((uint)((multiplier * value) >> 32) + 1, divisor)
+                : (uint)(((((multiplier * value) >> 32) + 1) * divisor) >> 32);
 
             Debug.Assert(highbits == value % divisor);
             return highbits;

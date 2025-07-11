@@ -523,7 +523,7 @@ namespace System.Collections.Generic
             {
                 get
                 {
-                    if (_index == 0 || (_index == _list.Count + 1))
+                    if (_index == 0)
                     {
                         throw new InvalidOperationException(SR.InvalidOperation_EnumOpCantHappen);
                     }
@@ -541,11 +541,11 @@ namespace System.Collections.Generic
 
                 if (_node == null)
                 {
-                    _index = _list.Count + 1;
+                    _index = 0;
                     return false;
                 }
 
-                ++_index;
+                _index = 1;
                 _current = _node.item;
                 _node = _node.next;
                 if (_node == _list.head)

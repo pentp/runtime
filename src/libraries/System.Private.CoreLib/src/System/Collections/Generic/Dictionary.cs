@@ -599,37 +599,35 @@ namespace System.Collections.Generic
             if (_freeCount > 0)
             {
                 index = _freeList;
-                Debug.Assert((StartOfFreeList - entries[_freeList].next) >= -1, "shouldn't overflow because `next` cannot underflow");
-                _freeList = StartOfFreeList - entries[_freeList].next;
+                Debug.Assert((StartOfFreeList - entries[index].next) >= -1, "shouldn't overflow because `next` cannot underflow");
+                _freeList = StartOfFreeList - entries[index].next;
                 _freeCount--;
             }
             else
             {
-                int count = _count;
-                if (count == entries.Length)
+                index = _count;
+                if (index == entries.Length)
                 {
-                    Resize();
-                    bucket = ref GetBucket(hashCode);
+                    bucket = ref ResizeAndGetBucket(hashCode);
+                    entries = _entries!;
                 }
-                index = count;
-                _count = count + 1;
-                entries = _entries;
+                _count = index + 1;
             }
 
-            ref Entry entry = ref entries![index];
+            ref Entry entry = ref entries[index];
             entry.hashCode = hashCode;
             entry.next = bucket - 1; // Value in _buckets is 1-based
+            bucket = index + 1;
             entry.key = key;
             entry.value = value;
-            bucket = index + 1; // Value in _buckets is 1-based
             _version++;
 
             // Value types never rehash
-            if (!typeof(TKey).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && comparer is NonRandomizedStringEqualityComparer)
+            if (!typeof(TKey).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && _comparer is NonRandomizedStringEqualityComparer)
             {
                 // If we hit the collision threshold we'll need to switch to the comparer which is using randomized string hashing
                 // i.e. EqualityComparer<string>.Default.
-                Resize(entries.Length, true);
+                ForceNewHashCodes();
             }
 
             return true;
@@ -1005,62 +1003,48 @@ namespace System.Collections.Generic
                     ThrowHelper.ThrowArgumentNullException(ExceptionArgument.key);
                 }
 
+                exists = false;
                 int index;
                 if (dictionary._freeCount > 0)
                 {
                     index = dictionary._freeList;
-                    Debug.Assert((StartOfFreeList - entries[dictionary._freeList].next) >= -1, "shouldn't overflow because `next` cannot underflow");
-                    dictionary._freeList = StartOfFreeList - entries[dictionary._freeList].next;
+                    Debug.Assert((StartOfFreeList - entries[index].next) >= -1, "shouldn't overflow because `next` cannot underflow");
+                    dictionary._freeList = StartOfFreeList - entries[index].next;
                     dictionary._freeCount--;
                 }
                 else
                 {
-                    int count = dictionary._count;
-                    if (count == entries.Length)
+                    index = dictionary._count;
+                    if (index == entries.Length)
                     {
-                        dictionary.Resize();
-                        bucket = ref dictionary.GetBucket(hashCode);
+                        bucket = ref dictionary.ResizeAndGetBucket(hashCode);
+                        entries = dictionary._entries!;
                     }
-                    index = count;
-                    dictionary._count = count + 1;
-                    entries = dictionary._entries;
+                    dictionary._count = index + 1;
                 }
 
-                ref Entry entry = ref entries![index];
+                ref Entry entry = ref entries[index];
                 entry.hashCode = hashCode;
                 entry.next = bucket - 1; // Value in _buckets is 1-based
+                bucket = index + 1;
                 entry.key = actualKey;
                 entry.value = default!;
-                bucket = index + 1; // Value in _buckets is 1-based
                 dictionary._version++;
 
                 // Value types never rehash
-                if (!typeof(TKey).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && comparer is NonRandomizedStringEqualityComparer)
+                if (!typeof(TKey).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && dictionary._comparer is NonRandomizedStringEqualityComparer)
                 {
                     // If we hit the collision threshold we'll need to switch to the comparer which is using randomized string hashing
                     // i.e. EqualityComparer<string>.Default.
-                    dictionary.Resize(entries.Length, true);
-
-                    exists = false;
-
-                    // At this point the entries array has been resized, so the current reference we have is no longer valid.
-                    // We're forced to do a new lookup and return an updated reference to the new entry instance. This new
-                    // lookup is guaranteed to always find a value though and it will never return a null reference here.
-                    ref TValue? value = ref dictionary.FindValue(actualKey)!;
-
-                    Debug.Assert(!Unsafe.IsNullRef(ref value), "the lookup result cannot be a null ref here");
-
-                    return ref value;
+                    dictionary.ForceNewHashCodes();
                 }
-
-                exists = false;
 
                 return ref entry.value!;
             }
         }
 
         /// <summary>
-        /// A helper class containing APIs exposed through <see cref="CollectionsMarshal"/> or <see cref="CollectionExtensions"/>.
+        /// A helper class containing APIs exposed through <see cref="CollectionsMarshal"/>.
         /// These methods are relatively niche and only used in specific scenarios, so adding them in a separate type avoids
         /// the additional overhead on each <see cref="Dictionary{TKey, TValue}"/> instantiation, especially in AOT scenarios.
         /// </summary>
@@ -1142,55 +1126,41 @@ namespace System.Collections.Generic
                     }
                 }
 
+                exists = false;
                 int index;
                 if (dictionary._freeCount > 0)
                 {
                     index = dictionary._freeList;
-                    Debug.Assert((StartOfFreeList - entries[dictionary._freeList].next) >= -1, "shouldn't overflow because `next` cannot underflow");
-                    dictionary._freeList = StartOfFreeList - entries[dictionary._freeList].next;
+                    Debug.Assert((StartOfFreeList - entries[index].next) >= -1, "shouldn't overflow because `next` cannot underflow");
+                    dictionary._freeList = StartOfFreeList - entries[index].next;
                     dictionary._freeCount--;
                 }
                 else
                 {
-                    int count = dictionary._count;
-                    if (count == entries.Length)
+                    index = dictionary._count;
+                    if (index == entries.Length)
                     {
-                        dictionary.Resize();
-                        bucket = ref dictionary.GetBucket(hashCode);
+                        bucket = ref dictionary.ResizeAndGetBucket(hashCode);
+                        entries = dictionary._entries!;
                     }
-                    index = count;
-                    dictionary._count = count + 1;
-                    entries = dictionary._entries;
+                    dictionary._count = index + 1;
                 }
 
-                ref Entry entry = ref entries![index];
+                ref Entry entry = ref entries[index];
                 entry.hashCode = hashCode;
                 entry.next = bucket - 1; // Value in _buckets is 1-based
+                bucket = index + 1;
                 entry.key = key;
                 entry.value = default!;
-                bucket = index + 1; // Value in _buckets is 1-based
                 dictionary._version++;
 
                 // Value types never rehash
-                if (!typeof(TKey).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && comparer is NonRandomizedStringEqualityComparer)
+                if (!typeof(TKey).IsValueType && collisionCount > HashHelpers.HashCollisionThreshold && dictionary._comparer is NonRandomizedStringEqualityComparer)
                 {
                     // If we hit the collision threshold we'll need to switch to the comparer which is using randomized string hashing
                     // i.e. EqualityComparer<string>.Default.
-                    dictionary.Resize(entries.Length, true);
-
-                    exists = false;
-
-                    // At this point the entries array has been resized, so the current reference we have is no longer valid.
-                    // We're forced to do a new lookup and return an updated reference to the new entry instance. This new
-                    // lookup is guaranteed to always find a value though and it will never return a null reference here.
-                    ref TValue? value = ref dictionary.FindValue(key)!;
-
-                    Debug.Assert(!Unsafe.IsNullRef(ref value), "the lookup result cannot be a null ref here");
-
-                    return ref value;
+                    dictionary.ForceNewHashCodes();
                 }
-
-                exists = false;
 
                 return ref entry.value!;
             }
@@ -1242,36 +1212,24 @@ namespace System.Collections.Generic
             HashHelpers.SerializationInfoTable.Remove(this);
         }
 
-        private void Resize() => Resize(HashHelpers.ExpandPrime(_count), false);
-
-        private void Resize(int newSize, bool forceNewHashCodes)
+        private ref int ResizeAndGetBucket(uint hashCode)
         {
-            // Value types never rehash
-            Debug.Assert(!forceNewHashCodes || !typeof(TKey).IsValueType);
+            Resize(HashHelpers.ExpandPrime(_count));
+            return ref GetBucket(hashCode);
+        }
+
+        private void Resize(int newSize)
+        {
             Debug.Assert(_entries != null, "_entries should be non-null");
-            Debug.Assert(newSize >= _entries.Length);
+            Debug.Assert(newSize > _entries.Length);
 
             Entry[] entries = new Entry[newSize];
 
             int count = _count;
             Array.Copy(_entries, entries, count);
 
-            if (!typeof(TKey).IsValueType && forceNewHashCodes)
-            {
-                Debug.Assert(_comparer is NonRandomizedStringEqualityComparer);
-                IEqualityComparer<TKey> comparer = _comparer = (IEqualityComparer<TKey>)((NonRandomizedStringEqualityComparer)_comparer).GetRandomizedEqualityComparer();
-
-                for (int i = 0; i < count; i++)
-                {
-                    if (entries[i].next >= -1)
-                    {
-                        entries[i].hashCode = (uint)comparer.GetHashCode(entries[i].key);
-                    }
-                }
-            }
-
             // Assign member variables after both arrays allocated to guard against corruption from OOM if second fails
-            _buckets = new int[newSize];
+            int[] buckets = _buckets = new int[newSize];
 #if TARGET_64BIT
             _fastModMultiplier = HashHelpers.GetFastModMultiplier((uint)newSize);
 #endif
@@ -1279,13 +1237,35 @@ namespace System.Collections.Generic
             {
                 if (entries[i].next >= -1)
                 {
-                    ref int bucket = ref GetBucket(entries[i].hashCode);
+                    ref int bucket = ref GetBucket(entries[i].hashCode, buckets);
                     entries[i].next = bucket - 1; // Value in _buckets is 1-based
                     bucket = i + 1;
                 }
             }
 
             _entries = entries;
+        }
+
+        private void ForceNewHashCodes()
+        {
+            // Value types never rehash
+            Debug.Assert(!typeof(TKey).IsValueType);
+            Debug.Assert(_comparer is NonRandomizedStringEqualityComparer);
+            IEqualityComparer<TKey> comparer = _comparer = (IEqualityComparer<TKey>)((NonRandomizedStringEqualityComparer)_comparer).GetRandomizedEqualityComparer();
+
+            int[] buckets = _buckets!;
+            Array.Clear(buckets);
+            Entry[] entries = _entries!;
+            for (int i = 0, count = _count; i < count; i++)
+            {
+                if (entries[i].next >= -1)
+                {
+                    uint hashCode = entries[i].hashCode = (uint)comparer.GetHashCode(entries[i].key);
+                    ref int bucket = ref GetBucket(hashCode, buckets);
+                    entries[i].next = bucket - 1; // Value in _buckets is 1-based
+                    bucket = i + 1;
+                }
+            }
         }
 
         public bool Remove(TKey key)
@@ -1554,7 +1534,7 @@ namespace System.Collections.Generic
             }
 
             int newSize = HashHelpers.GetPrime(capacity);
-            Resize(newSize, forceNewHashCodes: false);
+            Resize(newSize);
             return newSize;
         }
 
@@ -1608,6 +1588,7 @@ namespace System.Collections.Generic
         {
             Debug.Assert(_entries is not null);
 
+            int[] buckets = _buckets!;
             Entry[] newEntries = _entries;
             int newCount = 0;
             for (int i = 0; i < count; i++)
@@ -1617,7 +1598,7 @@ namespace System.Collections.Generic
                 {
                     ref Entry entry = ref newEntries[newCount];
                     entry = entries[i];
-                    ref int bucket = ref GetBucket(hashCode);
+                    ref int bucket = ref GetBucket(hashCode, buckets);
                     entry.next = bucket - 1; // Value in _buckets is 1-based
                     bucket = newCount + 1;
                     newCount++;
@@ -1739,15 +1720,14 @@ namespace System.Collections.Generic
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ref int GetBucket(uint hashCode)
-        {
-            int[] buckets = _buckets!;
+        private ref int GetBucket(uint hashCode) => ref GetBucket(hashCode, _buckets!);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
 #if TARGET_64BIT
-            return ref buckets[HashHelpers.FastMod(hashCode, (uint)buckets.Length, _fastModMultiplier)];
+        private ref int GetBucket(uint hashCode, int[] buckets) => ref buckets[HashHelpers.FastMod(hashCode, (uint)buckets.Length, _fastModMultiplier)];
 #else
-            return ref buckets[(uint)hashCode % buckets.Length];
+        private static ref int GetBucket(uint hashCode, int[] buckets) => ref buckets[hashCode % (uint)buckets.Length];
 #endif
-        }
 
         private struct Entry
         {
@@ -1789,8 +1769,7 @@ namespace System.Collections.Generic
                     ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumFailedVersion();
                 }
 
-                // Use unsigned comparison since we set index to dictionary.count+1 when the enumeration ends.
-                // dictionary.count+1 could be negative if dictionary.count is int.MaxValue
+                // Use unsigned comparison since we set index to -1 when the enumeration ends.
                 while ((uint)_index < (uint)_dictionary._count)
                 {
                     ref Entry entry = ref _dictionary._entries![_index++];
@@ -1802,7 +1781,7 @@ namespace System.Collections.Generic
                     }
                 }
 
-                _index = _dictionary._count + 1;
+                _index = -1;
                 _current = default;
                 return false;
             }
@@ -1815,7 +1794,7 @@ namespace System.Collections.Generic
             {
                 get
                 {
-                    if (_index == 0 || (_index == _dictionary._count + 1))
+                    if (_index <= 0)
                     {
                         ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen();
                     }
@@ -1825,7 +1804,7 @@ namespace System.Collections.Generic
                         return new DictionaryEntry(_current.Key, _current.Value);
                     }
 
-                    return new KeyValuePair<TKey, TValue>(_current.Key, _current.Value);
+                    return _current;
                 }
             }
 
@@ -1844,7 +1823,7 @@ namespace System.Collections.Generic
             {
                 get
                 {
-                    if (_index == 0 || (_index == _dictionary._count + 1))
+                    if (_index <= 0)
                     {
                         ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen();
                     }
@@ -1857,7 +1836,7 @@ namespace System.Collections.Generic
             {
                 get
                 {
-                    if (_index == 0 || (_index == _dictionary._count + 1))
+                    if (_index <= 0)
                     {
                         ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen();
                     }
@@ -1870,7 +1849,7 @@ namespace System.Collections.Generic
             {
                 get
                 {
-                    if (_index == 0 || (_index == _dictionary._count + 1))
+                    if (_index <= 0)
                     {
                         ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen();
                     }
@@ -2042,7 +2021,7 @@ namespace System.Collections.Generic
                         }
                     }
 
-                    _index = _dictionary._count + 1;
+                    _index = -1;
                     _currentKey = default;
                     return false;
                 }
@@ -2053,7 +2032,7 @@ namespace System.Collections.Generic
                 {
                     get
                     {
-                        if (_index == 0 || (_index == _dictionary._count + 1))
+                        if (_index <= 0)
                         {
                             ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen();
                         }
@@ -2235,7 +2214,7 @@ namespace System.Collections.Generic
                             return true;
                         }
                     }
-                    _index = _dictionary._count + 1;
+                    _index = -1;
                     _currentValue = default;
                     return false;
                 }
@@ -2246,7 +2225,7 @@ namespace System.Collections.Generic
                 {
                     get
                     {
-                        if (_index == 0 || (_index == _dictionary._count + 1))
+                        if (_index <= 0)
                         {
                             ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumOpCantHappen();
                         }
