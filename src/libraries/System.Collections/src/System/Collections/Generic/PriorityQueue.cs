@@ -1025,7 +1025,6 @@ namespace System.Collections.Generic
                     }
 
                     _current = default;
-                    _index = -1;
                     return false;
                 }
 

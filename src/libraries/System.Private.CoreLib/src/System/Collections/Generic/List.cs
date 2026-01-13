@@ -1204,7 +1204,7 @@ namespace System.Collections.Generic
             {
                 List<T> localList = _list;
 
-                if (_version != _list._version)
+                if (_version != localList._version)
                 {
                     ThrowHelper.ThrowInvalidOperationException_InvalidOperation_EnumFailedVersion();
                 }
