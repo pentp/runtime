@@ -31,9 +31,9 @@ namespace System.Threading
         /// </summary>
         public void Dispose()
         {
-            if (_node is CancellationTokenSource.CallbackNode node && !node.Registrations.Unregister(_id, node))
+            if (_node is CancellationTokenSource.CallbackNode node && _id is not 0 and long id && !node.Registrations.Unregister(id, node))
             {
-                WaitForCallbackIfNecessary(_id, node);
+                WaitForCallbackIfNecessary(id, node);
 
                 static void WaitForCallbackIfNecessary(long id, CancellationTokenSource.CallbackNode node)
                 {

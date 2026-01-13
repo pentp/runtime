@@ -174,8 +174,7 @@ namespace System.Threading.Tasks
 
             if ((ets == null) ||
                 (task.m_action == null) ||
-                task.IsDelegateInvoked ||
-                task.IsCanceled ||
+                task.IsDelegateInvokedOrCanceled ||
                 !RuntimeHelpers.TryEnsureSufficientExecutionStack())
             {
                 return false;
@@ -191,7 +190,7 @@ namespace System.Threading.Tasks
 
             // If the custom scheduler returned true, we should either have the TaskStateFlags.DelegateInvoked or TaskStateFlags.Canceled bit set
             // Otherwise the scheduler is buggy
-            if (inlined && !(task.IsDelegateInvoked || task.IsCanceled))
+            if (inlined && !task.IsDelegateInvokedOrCanceled)
             {
                 throw new InvalidOperationException(SR.TaskScheduler_InconsistentStateAfterTryExecuteTaskInline);
             }

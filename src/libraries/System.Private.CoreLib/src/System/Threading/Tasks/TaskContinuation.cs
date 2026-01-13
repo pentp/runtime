@@ -244,7 +244,7 @@ namespace System.Threading.Tasks
                 // because it would already have been handled in Task.Execute()
                 TaskSchedulerException tse = new TaskSchedulerException(e);
                 task.AddException(tse);
-                task.Finish(false);
+                task.FinishStageTwo();
                 // Don't re-throw.
             }
         }

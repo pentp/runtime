@@ -168,7 +168,7 @@ namespace System.Threading.Tasks
         private volatile object? m_continuationObject; // SOS DumpAsync command depends on this name
 
         // m_continuationObject is set to this when the task completes.
-        private static readonly object s_taskCompletionSentinel = new object();
+        private static object s_taskCompletionSentinel => nameof(s_taskCompletionSentinel);
 
         // A private flag that would be set (only) by the debugger
         // When true the Async Causality logging trace is enabled as well as a dictionary to relate operation ids with Tasks
@@ -878,7 +878,7 @@ namespace System.Threading.Tasks
             {
                 // A count of 1 indicates so far there was only the parent, and this is the first child task
                 // Single kid => no fuss about who else is accessing the count. Let's save ourselves 100 cycles
-                props.m_completionCountdown++;
+                props.m_completionCountdown = 2;
             }
             else
             {
@@ -1105,7 +1105,7 @@ namespace System.Threading.Tasks
                         // Record the exception, marking ourselves as Completed/Faulted.
                         TaskSchedulerException tse = new TaskSchedulerException(e);
                         AddException(tse);
-                        Finish(false);
+                        FinishStageTwo();
 
                         // Mark ourselves as "handled" to avoid crashing the finalizer thread if the caller neglects to
                         // call Wait() on this task.
@@ -1301,9 +1301,7 @@ namespace System.Threading.Tasks
         /// <see cref="OperationCanceledException">OperationCanceledException</see> that bears the same
         /// <see cref="Threading.CancellationToken">CancellationToken</see>.
         /// </remarks>
-        public bool IsCanceled =>
-                // Return true if canceled bit is set and faulted bit is not set
-                (m_stateFlags & ((int)TaskStateFlags.Canceled | (int)TaskStateFlags.Faulted)) == (int)TaskStateFlags.Canceled;
+        public bool IsCanceled => (m_stateFlags & (int)TaskStateFlags.Canceled) != 0;
 
         /// <summary>
         /// Returns true if this task has a cancellation token and it was signaled.
@@ -1388,7 +1386,7 @@ namespace System.Threading.Tasks
             return (flags & (int)TaskStateFlags.CompletedMask) != 0;
         }
 
-        public bool IsCompletedSuccessfully => (m_stateFlags & (int)TaskStateFlags.CompletedMask) == (int)TaskStateFlags.RanToCompletion;
+        public bool IsCompletedSuccessfully => (m_stateFlags & (int)TaskStateFlags.RanToCompletion) != 0;
 
         /// <summary>
         /// Gets the <see cref="TaskCreationOptions">TaskCreationOptions</see> used
@@ -1696,7 +1694,7 @@ namespace System.Threading.Tasks
                 // a Faulted state.
                 TaskSchedulerException tse = new TaskSchedulerException(e);
                 AddException(tse);
-                Finish(false);
+                FinishStageTwo();
 
                 // Now we need to mark ourselves as "handled" to avoid crashing the finalizer thread if we are called from StartNew(),
                 // because the exception is either propagated outside directly, or added to an enclosing parent. However we won't do this for
@@ -1962,76 +1960,48 @@ namespace System.Threading.Tasks
         /// <summary>
         /// Checks whether the body was ever invoked. Used by task scheduler code to verify custom schedulers actually ran the task.
         /// </summary>
-        internal bool IsDelegateInvoked => (m_stateFlags & (int)TaskStateFlags.DelegateInvoked) != 0;
+        internal bool IsDelegateInvokedOrCanceled => (m_stateFlags & ((int)TaskStateFlags.DelegateInvoked | (int)TaskStateFlags.Canceled)) != 0;
 
         /// <summary>
-        /// Signals completion of this particular task.
-        ///
-        /// The userDelegateExecute parameter indicates whether this Finish() call comes following the
-        /// full execution of the user delegate.
-        ///
-        /// If userDelegateExecute is false, it mean user delegate wasn't invoked at all (either due to
-        /// a cancellation request, or because this task is a promise style Task). In this case, the steps
-        /// involving child tasks (i.e. WaitForChildren) will be skipped.
-        ///
+        /// Signals completion of this particular task following the full execution of the user delegate.
         /// </summary>
-        internal void Finish(bool userDelegateExecute)
+        private void FinishSlow()
         {
-            if (m_contingentProperties == null)
+            Debug.Assert(m_contingentProperties != null);
+
+            ContingentProperties props = m_contingentProperties!;
+
+            // Count of 1 => either all children finished, or there were none. Safe to complete ourselves
+            // without paying the price of an Interlocked.Decrement.
+            if ((props.m_completionCountdown == 1) ||
+                Interlocked.Decrement(ref props.m_completionCountdown) == 0) // Reaching this sub clause means there may be remaining active children,
+                                                                             // and we could be racing with one of them to call FinishStageTwo().
+                                                                             // So whoever does the final Interlocked.Dec is responsible to finish.
             {
                 FinishStageTwo();
             }
             else
             {
-                FinishSlow(userDelegateExecute);
+                // Apparently some children still remain. It will be up to the last one to process the completion of this task on their own thread.
+                // We will now yield the thread back to ThreadPool. Mark our state appropriately before getting out.
+
+                // We have to use an atomic update for this and make sure not to overwrite a final state,
+                // because at this very moment the last child's thread may be concurrently completing us.
+                // Otherwise we risk overwriting the TaskStateFlags.RanToCompletion, _CANCELED or _FAULTED bit which may have been set by that child task.
+                // Note that the concurrent update by the last child happening in FinishStageTwo could still wipe out the TaskStateFlags.WaitingOnChildren flag,
+                // but it is not critical to maintain, therefore we dont' need to intruduce a full atomic update into FinishStageTwo
+
+                AtomicStateUpdate((int)TaskStateFlags.WaitingOnChildren, (int)TaskStateFlags.CompletedMask);
             }
-        }
 
-        private void FinishSlow(bool userDelegateExecute)
-        {
-            Debug.Assert(userDelegateExecute || m_contingentProperties != null);
-
-            if (!userDelegateExecute)
+            // Now is the time to prune exceptional children. We'll walk the list and removes the ones whose exceptions we might have observed after they threw.
+            // we use a local variable for exceptional children here because some other thread may be nulling out m_contingentProperties.m_exceptionalChildren
+            List<Task>? exceptionalChildren = props.m_exceptionalChildren;
+            if (exceptionalChildren != null)
             {
-                // delegate didn't execute => no children. We can safely call the remaining finish stages
-                FinishStageTwo();
-            }
-            else
-            {
-                ContingentProperties props = m_contingentProperties!;
-
-                // Count of 1 => either all children finished, or there were none. Safe to complete ourselves
-                // without paying the price of an Interlocked.Decrement.
-                if ((props.m_completionCountdown == 1) ||
-                    Interlocked.Decrement(ref props.m_completionCountdown) == 0) // Reaching this sub clause means there may be remaining active children,
-                                                                                 // and we could be racing with one of them to call FinishStageTwo().
-                                                                                 // So whoever does the final Interlocked.Dec is responsible to finish.
+                lock (exceptionalChildren)
                 {
-                    FinishStageTwo();
-                }
-                else
-                {
-                    // Apparently some children still remain. It will be up to the last one to process the completion of this task on their own thread.
-                    // We will now yield the thread back to ThreadPool. Mark our state appropriately before getting out.
-
-                    // We have to use an atomic update for this and make sure not to overwrite a final state,
-                    // because at this very moment the last child's thread may be concurrently completing us.
-                    // Otherwise we risk overwriting the TaskStateFlags.RanToCompletion, _CANCELED or _FAULTED bit which may have been set by that child task.
-                    // Note that the concurrent update by the last child happening in FinishStageTwo could still wipe out the TaskStateFlags.WaitingOnChildren flag,
-                    // but it is not critical to maintain, therefore we dont' need to intruduce a full atomic update into FinishStageTwo
-
-                    AtomicStateUpdate((int)TaskStateFlags.WaitingOnChildren, (int)TaskStateFlags.Faulted | (int)TaskStateFlags.Canceled | (int)TaskStateFlags.RanToCompletion);
-                }
-
-                // Now is the time to prune exceptional children. We'll walk the list and removes the ones whose exceptions we might have observed after they threw.
-                // we use a local variable for exceptional children here because some other thread may be nulling out m_contingentProperties.m_exceptionalChildren
-                List<Task>? exceptionalChildren = props.m_exceptionalChildren;
-                if (exceptionalChildren != null)
-                {
-                    lock (exceptionalChildren)
-                    {
-                        exceptionalChildren.RemoveAll(t => t.IsExceptionObservedByParent); // RemoveAll has better performance than doing it ourselves
-                    }
+                    exceptionalChildren.RemoveAll(t => t.IsExceptionObservedByParent); // RemoveAll has better performance than doing it ourselves
                 }
             }
         }
@@ -2041,7 +2011,7 @@ namespace System.Threading.Tasks
         /// It can happen i) either on the thread that originally executed this task (if no children were spawned, or they all completed by the time this task's delegate quit)
         ///              ii) or on the thread that executed the last child.
         /// </summary>
-        private void FinishStageTwo()
+        internal void FinishStageTwo()
         {
             // At this point, the task is done executing and waiting for its children,
             // we can transition our task to a completion state.
@@ -2104,7 +2074,7 @@ namespace System.Threading.Tasks
         /// Final stage of the task completion code path. Notifies the parent (if any) that another of its children are done, and runs continuations.
         /// This function is only separated out from FinishStageTwo because these two operations are also needed to be called from CancellationCleanupLogic()
         /// </summary>
-        internal void FinishStageThree()
+        private void FinishStageThree()
         {
             // Release the action so that holding this task object alive doesn't also
             // hold alive the body of the task.  We do this before notifying a parent,
@@ -2144,7 +2114,7 @@ namespace System.Threading.Tasks
         /// <summary>
         /// This is called by children of this task when they are completed.
         /// </summary>
-        internal void ProcessChildCompletion(Task childTask)
+        private void ProcessChildCompletion(Task childTask)
         {
             Debug.Assert(childTask != null);
             Debug.Assert(childTask.IsCompleted, "ProcessChildCompletion was called for an uncompleted task");
@@ -2157,16 +2127,8 @@ namespace System.Threading.Tasks
             if (childTask.IsFaulted && !childTask.IsExceptionObservedByParent)
             {
                 // Lazily initialize the child exception list
-                if (props!.m_exceptionalChildren == null)
-                {
-                    Interlocked.CompareExchange(ref props.m_exceptionalChildren, new List<Task>(), null);
-                }
-
-                // In rare situations involving AppDomainUnload, it's possible (though unlikely) for FinishStageTwo() to be called
-                // multiple times for the same task.  In that case, AddExceptionsFromChildren() could be nulling m_exceptionalChildren
-                // out at the same time that we're processing it, resulting in a NullReferenceException here.  We'll protect
-                // ourselves by caching m_exceptionChildren in a local variable.
-                List<Task>? tmp = props.m_exceptionalChildren;
+                List<Task>? tmp = props!.m_exceptionalChildren ?? Interlocked.CompareExchange(ref props.m_exceptionalChildren, [childTask], null);
+                // if tmp is null here then we succeeded in storing the new list atomically and don't need to do a locking add
                 if (tmp != null)
                 {
                     lock (tmp)
@@ -2189,7 +2151,7 @@ namespace System.Threading.Tasks
         /// This is to be called just before the task does its final state transition.
         /// It traverses the list of exceptional children, and appends their aggregate exceptions into this one's exception list
         /// </summary>
-        internal void AddExceptionsFromChildren(ContingentProperties props)
+        private void AddExceptionsFromChildren(ContingentProperties props)
         {
             Debug.Assert(props != null);
 
@@ -2240,19 +2202,19 @@ namespace System.Threading.Tasks
             int previousState = 0;
             if (!AtomicStateUpdate((int)TaskStateFlags.DelegateInvoked,
                                     (int)TaskStateFlags.DelegateInvoked | (int)TaskStateFlags.CompletedMask,
-                                    ref previousState) && (previousState & (int)TaskStateFlags.Canceled) == 0)
+                                    ref previousState))
             {
                 // This task has already been invoked.  Don't invoke it again.
-                return false;
+                return (previousState & (int)TaskStateFlags.Canceled) != 0;
             }
 
-            if (!IsCancellationRequested & !IsCanceled)
+            if (!IsCancellationRequested)
             {
-                ExecuteWithThreadLocal(ref t_currentTask);
+                ExecuteWithThreadLocal();
             }
             else
             {
-                ExecuteEntryCancellationRequestedOrCanceled();
+                ExecuteEntryCancellationRequested(previousState | (int)TaskStateFlags.DelegateInvoked);
             }
 
             return true;
@@ -2269,33 +2231,33 @@ namespace System.Threading.Tasks
         internal void ExecuteEntryUnsafe(Thread? threadPoolThread) // used instead of ExecuteEntry() when we don't have to worry about double-execution prevent
         {
             // Remember that we started running the task delegate.
-            m_stateFlags |= (int)TaskStateFlags.DelegateInvoked;
+            int flags = m_stateFlags |= (int)TaskStateFlags.DelegateInvoked;
 
-            if (!IsCancellationRequested & !IsCanceled)
+            if ((flags & (int)TaskStateFlags.Canceled) == 0)
             {
-                ExecuteWithThreadLocal(ref t_currentTask, threadPoolThread);
-            }
-            else
-            {
-                ExecuteEntryCancellationRequestedOrCanceled();
-            }
-        }
-
-        internal void ExecuteEntryCancellationRequestedOrCanceled()
-        {
-            if (!IsCanceled)
-            {
-                int prevState = Interlocked.Exchange(ref m_stateFlags, m_stateFlags | (int)TaskStateFlags.Canceled);
-                if ((prevState & (int)TaskStateFlags.Canceled) == 0)
+                if (!IsCancellationRequested)
                 {
-                    CancellationCleanupLogic();
+                    ExecuteWithThreadLocal(threadPoolThread);
+                }
+                else
+                {
+                    ExecuteEntryCancellationRequested(flags);
                 }
             }
         }
 
-        // A trick so we can refer to the TLS slot with a byref.
-        private void ExecuteWithThreadLocal(ref Task? currentTaskSlot, Thread? threadPoolThread = null)
+        private void ExecuteEntryCancellationRequested(int stateFlags)
         {
+            int prevState = Interlocked.Exchange(ref m_stateFlags, stateFlags | (int)TaskStateFlags.Canceled);
+            if ((prevState & (int)TaskStateFlags.Canceled) == 0)
+            {
+                CancellationCleanupLogic();
+            }
+        }
+
+        private void ExecuteWithThreadLocal(Thread? threadPoolThread = null)
+        {
+            ref Task? currentTaskSlot = ref t_currentTask;
             // Remember the current task so we can restore it after running, and then
             Task? previousTask = currentTaskSlot;
 
@@ -2351,7 +2313,14 @@ namespace System.Threading.Tasks
 
                 log?.TraceSynchronousWorkEnd(CausalitySynchronousWork.Execution);
 
-                Finish(true);
+                if (m_contingentProperties == null)
+                {
+                    FinishStageTwo();
+                }
+                else
+                {
+                    FinishSlow();
+                }
             }
             finally
             {
@@ -3201,8 +3170,7 @@ namespace System.Threading.Tasks
             else if ((m_stateFlags & (int)TaskStateFlags.Started) == 0)
             {
                 mustCleanup = AtomicStateUpdate((int)TaskStateFlags.Canceled,
-                    (int)TaskStateFlags.Canceled | (int)TaskStateFlags.Started | (int)TaskStateFlags.RanToCompletion |
-                    (int)TaskStateFlags.Faulted | (int)TaskStateFlags.DelegateInvoked);
+                    (int)TaskStateFlags.CompletedMask | (int)TaskStateFlags.Started | (int)TaskStateFlags.DelegateInvoked);
             }
 
             // do the cleanup (i.e. set completion event and finish continuations)
@@ -3328,9 +3296,7 @@ namespace System.Threading.Tasks
         /// <returns>true if the task was transitioned to ran to completion; false if it was already completed.</returns>
         internal bool TrySetResult()
         {
-            if (AtomicStateUpdate(
-                (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.RanToCompletion,
-                (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.RanToCompletion | (int)TaskStateFlags.Faulted | (int)TaskStateFlags.Canceled))
+            if (AtomicStateUpdate((int)TaskStateFlags.RanToCompletion, (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.CompletedMask))
             {
                 ContingentProperties? props = m_contingentProperties;
                 if (props != null)
@@ -3363,27 +3329,19 @@ namespace System.Threading.Tasks
                 (exceptionObject is ExceptionDispatchInfo) || (exceptionObject is IEnumerable<ExceptionDispatchInfo>),
                 "Expected exceptionObject to be either Exception, ExceptionDispatchInfo, or IEnumerable<> of one of those");
 
-            bool returnValue = false;
-
             // "Reserve" the completion for this task, while making sure that: (1) No prior reservation
             // has been made, (2) The result has not already been set, (3) An exception has not previously
             // been recorded, and (4) Cancellation has not been requested.
             //
             // If the reservation is successful, then add the exception(s) and finish completion processing.
-            //
-            // The lazy initialization may not be strictly necessary, but I'd like to keep it here
-            // anyway.  Some downstream logic may depend upon an inflated m_contingentProperties.
-            EnsureContingentPropertiesInitialized();
-            if (AtomicStateUpdate(
-                (int)TaskStateFlags.CompletionReserved,
-                (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.RanToCompletion | (int)TaskStateFlags.Faulted | (int)TaskStateFlags.Canceled))
+            if (AtomicStateUpdate((int)TaskStateFlags.CompletionReserved, (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.CompletedMask))
             {
                 AddException(exceptionObject); // handles singleton exception or exception collection
-                Finish(false);
-                returnValue = true;
+                FinishStageTwo();
+                return true;
             }
 
-            return returnValue;
+            return false;
         }
 
         // internal helper function breaks out logic used by TaskCompletionSource and AsyncMethodBuilder
@@ -3406,23 +3364,19 @@ namespace System.Threading.Tasks
                 (cancellationException as ExceptionDispatchInfo)?.SourceException is OperationCanceledException,
                 "Expected null or an OperationCanceledException");
 
-            bool returnValue = false;
-
             // "Reserve" the completion for this task, while making sure that: (1) No prior reservation
             // has been made, (2) The result has not already been set, (3) An exception has not previously
             // been recorded, and (4) Cancellation has not been requested.
             //
             // If the reservation is successful, then record the cancellation and finish completion processing.
-            if (AtomicStateUpdate(
-                (int)TaskStateFlags.CompletionReserved,
-                (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.Canceled | (int)TaskStateFlags.Faulted | (int)TaskStateFlags.RanToCompletion))
+            if (AtomicStateUpdate((int)TaskStateFlags.CompletionReserved, (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.CompletedMask))
             {
                 RecordInternalCancellationRequest(tokenToRecord, cancellationException);
                 CancellationCleanupLogic(); // perform cancellation cleanup actions
-                returnValue = true;
+                return true;
             }
 
-            return returnValue;
+            return false;
         }
 
         //

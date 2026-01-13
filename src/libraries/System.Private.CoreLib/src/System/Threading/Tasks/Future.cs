@@ -363,8 +363,7 @@ namespace System.Threading.Tasks
             // been recorded, and (4) Cancellation has not been requested.
             //
             // If the reservation is successful, then set the result and finish completion processing.
-            if (AtomicStateUpdate((int)TaskStateFlags.CompletionReserved,
-                    (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.RanToCompletion | (int)TaskStateFlags.Faulted | (int)TaskStateFlags.Canceled))
+            if (AtomicStateUpdate((int)TaskStateFlags.CompletionReserved, (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.CompletedMask))
             {
                 m_result = result;
 
