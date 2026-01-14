@@ -328,20 +328,18 @@ namespace System.Threading.Tasks
             }
 
             // Try to transition to the appropriate final state based on the state of completedTask.
-            bool result = false;
-            switch (completedTask.Status)
+            bool result;
+            if (completedTask.IsCompletedSuccessfully)
             {
-                case TaskStatus.RanToCompletion:
-                    result = _task.TrySetResult();
-                    break;
-
-                case TaskStatus.Canceled:
-                    result = _task.TrySetCanceled(completedTask.CancellationToken, completedTask.GetCancellationExceptionDispatchInfo());
-                    break;
-
-                case TaskStatus.Faulted:
-                    result = _task.TrySetException(completedTask.GetExceptionDispatchInfos());
-                    break;
+                result = _task.TrySetResult();
+            }
+            else if (completedTask.IsCanceled)
+            {
+                result = _task.TrySetCanceled(completedTask.CancellationToken, completedTask.GetCancellationExceptionDispatchInfo());
+            }
+            else
+            {
+                result = _task.TrySetException(completedTask.GetExceptionDispatchInfos());
             }
 
             // If we successfully transitioned to a final state, we're done. If we didn't, it's possible a concurrent operation

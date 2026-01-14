@@ -859,7 +859,7 @@ namespace System.Threading.Tasks
                 if (obj is Task<TResult> t)
                 {
                     TaskAwaiter.ValidateEnd(t);
-                    return t.ResultOnSuccess;
+                    return t.m_result!;
                 }
 
                 return Unsafe.As<IValueTaskSource<TResult>>(obj).GetResult(_token);

@@ -327,7 +327,7 @@ namespace System.Runtime.CompilerServices
         public TResult GetResult()
         {
             TaskAwaiter.ValidateEnd(m_task);
-            return m_task.ResultOnSuccess;
+            return m_task.m_result!;
         }
     }
 
@@ -507,7 +507,7 @@ namespace System.Runtime.CompilerServices
             public TResult GetResult()
             {
                 TaskAwaiter.ValidateEnd(m_task); // no need to pass options as SuppressThrowing isn't supported
-                return m_task.ResultOnSuccess;
+                return m_task.m_result!;
             }
         }
     }

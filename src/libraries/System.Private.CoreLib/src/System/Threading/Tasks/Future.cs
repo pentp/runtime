@@ -428,16 +428,13 @@ namespace System.Threading.Tasks
         /// <summary>
         /// Gets the result value of this <see cref="Task{TResult}"/> once the task has completed successfully.
         /// </summary>
-        /// <remarks>
-        /// This version of Result should only be used if the task completed successfully and if there's
-        /// no debugger wait notification enabled for this task.
-        /// </remarks>
+        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
         internal TResult ResultOnSuccess
         {
             get
             {
-                Debug.Assert(!IsWaitNotificationEnabledOrNotRanToCompletion,
-                    "Should only be used when the task completed successfully and there's no wait notification enabled");
+                Debug.Assert(IsCompletedSuccessfully, "Should only be used when the task completed successfully");
+                if (IsWaitNotificationEnabled) NotifyDebuggerOfWaitCompletionIfNecessary();
                 return m_result!;
             }
         }

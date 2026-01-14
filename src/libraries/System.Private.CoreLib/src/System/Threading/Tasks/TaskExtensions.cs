@@ -18,7 +18,7 @@ namespace System.Threading.Tasks
             // task is null, return a canceled task to match the same semantics as CreateUnwrapPromise.
             return
                 !task.IsCompletedSuccessfully ? Task.CreateUnwrapPromise<VoidTaskResult>(task, lookForOce: false) :
-                task.Result ??
+                task.ResultOnSuccess ??
                 Task.FromCanceled(new CancellationToken(true));
         }
 
@@ -34,7 +34,7 @@ namespace System.Threading.Tasks
             // task is null, return a canceled task to match the same semantics as CreateUnwrapPromise.
             return
                 !task.IsCompletedSuccessfully ? Task.CreateUnwrapPromise<TResult>(task, lookForOce: false) :
-                task.Result ??
+                task.ResultOnSuccess ??
                 Task.FromCanceled<TResult>(new CancellationToken(true));
         }
     }

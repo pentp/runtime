@@ -772,7 +772,7 @@ namespace System.Runtime.CompilerServices
         internal static T CompletedTaskResult<T>(Task<T> task)
         {
             TaskAwaiter.ValidateEnd(task);
-            return task.ResultOnSuccess;
+            return task.m_result!;
         }
 
         internal static void CompletedTask(Task task)

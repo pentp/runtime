@@ -2847,12 +2847,10 @@ namespace System.Threading.Tasks
             {
                 Debug.Assert(completingTask.IsCompleted);
 
-                bool set = completingTask.Status switch
-                {
-                    TaskStatus.Canceled => TrySetCanceled(completingTask.CancellationToken, completingTask.GetCancellationExceptionDispatchInfo()),
-                    TaskStatus.Faulted => TrySetException(completingTask.GetExceptionDispatchInfos()),
-                    _ => completingTask is Task<TResult> taskTResult ? TrySetResult(taskTResult.Result) : TrySetResult(),
-                };
+                bool set =
+                    completingTask.IsCanceled ? TrySetCanceled(completingTask.CancellationToken, completingTask.GetCancellationExceptionDispatchInfo()) :
+                    completingTask.IsFaulted ? TrySetException(completingTask.GetExceptionDispatchInfos()) :
+                    completingTask is Task<TResult> taskTResult ? TrySetResult(taskTResult.ResultOnSuccess) : TrySetResult();
 
                 if (set)
                 {
@@ -5249,7 +5247,7 @@ namespace System.Threading.Tasks
                 if (waitCompleted)
                 {
                     Debug.Assert(firstCompleted.Status == TaskStatus.RanToCompletion);
-                    signaledTaskIndex = Array.IndexOf(tasks, firstCompleted.Result);
+                    signaledTaskIndex = Array.IndexOf(tasks, firstCompleted.ResultOnSuccess);
                     Debug.Assert(signaledTaskIndex >= 0);
                 }
                 else
@@ -7393,7 +7391,7 @@ namespace System.Threading.Tasks
             {
                 // Otherwise, process the inner task it returned.
                 ProcessInnerTask(task is Task<Task<TResult>> taskOfTaskOfTResult ? // it's either a Task<Task> or Task<Task<TResult>>
-                    taskOfTaskOfTResult.Result : ((Task<Task>)task).Result);
+                    taskOfTaskOfTResult.ResultOnSuccess : ((Task<Task>)task).ResultOnSuccess);
             }
         }
 
@@ -7434,7 +7432,7 @@ namespace System.Threading.Tasks
                 if (s_asyncDebuggingEnabled)
                     RemoveFromActiveTasks(this);
 
-                return TrySetResult(task is Task<TResult> taskTResult ? taskTResult.Result : default);
+                return TrySetResult(task is Task<TResult> taskTResult ? taskTResult.ResultOnSuccess : default);
             }
 
             return false;
