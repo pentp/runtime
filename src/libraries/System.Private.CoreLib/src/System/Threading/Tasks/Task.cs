@@ -580,9 +580,7 @@ namespace System.Threading.Tasks
             if (props != null)
             {
                 Task? parent = props.m_parent;
-                if (parent != null
-                    && ((creationOptions & TaskCreationOptions.AttachedToParent) != 0)
-                    && ((parent.CreationOptions & TaskCreationOptions.DenyChildAttach) == 0))
+                if (parent != null && (parent.Options & TaskCreationOptions.DenyChildAttach) == 0)
                 {
                     parent.AddNewChild();
                 }
@@ -660,9 +658,7 @@ namespace System.Threading.Tasks
                 // If we have an exception related to our CancellationToken, then we need to subtract ourselves
                 // from our parent before throwing it.
                 Task? parent = m_contingentProperties?.m_parent;
-                if ((parent != null) &&
-                    ((Options & TaskCreationOptions.AttachedToParent) != 0)
-                     && ((parent.Options & TaskCreationOptions.DenyChildAttach) == 0))
+                if (parent != null && (parent.Options & TaskCreationOptions.DenyChildAttach) == 0)
                 {
                     parent.DisregardChild();
                 }
@@ -674,15 +670,7 @@ namespace System.Threading.Tasks
         private string DebuggerDisplayMethodDescription => m_action?.Method.ToString() ?? "{null}";
 
         // Internal property to process TaskCreationOptions access and mutation.
-        internal TaskCreationOptions Options => OptionsMethod(m_stateFlags);
-
-        // Similar to Options property, but allows for the use of a cached flags value rather than
-        // a read of the volatile m_stateFlags field.
-        internal static TaskCreationOptions OptionsMethod(int flags)
-        {
-            Debug.Assert(((int)TaskStateFlags.OptionsMask & 1) == 1, "OptionsMask needs a shift in Options.get");
-            return (TaskCreationOptions)(flags & (int)TaskStateFlags.OptionsMask);
-        }
+        internal TaskCreationOptions Options => (TaskCreationOptions)(m_stateFlags & (int)TaskStateFlags.OptionsMask);
 
         // Atomically OR-in newBits to m_stateFlags, while making sure that
         // no illegalBits are set.  Returns true on success, false on failure.
@@ -943,7 +931,7 @@ namespace System.Threading.Tasks
 
             // Need to check this before (m_action == null) because completed tasks will
             // set m_action to null.  We would want to know if this is the reason that m_action == null.
-            if (IsCompletedMethod(flags))
+            if ((flags & (int)TaskStateFlags.CompletedMask) != 0)
             {
                 ThrowHelper.ThrowInvalidOperationException(ExceptionResource.Task_Start_TaskCompleted);
             }
@@ -953,12 +941,11 @@ namespace System.Threading.Tasks
                 ThrowHelper.ThrowArgumentNullException(ExceptionArgument.scheduler);
             }
 
-            TaskCreationOptions options = OptionsMethod(flags);
-            if ((options & (TaskCreationOptions)InternalTaskOptions.PromiseTask) != 0)
+            if ((flags & (int)InternalTaskOptions.PromiseTask) != 0)
             {
                 ThrowHelper.ThrowInvalidOperationException(ExceptionResource.Task_Start_Promise);
             }
-            if ((options & (TaskCreationOptions)InternalTaskOptions.ContinuationTask) != 0)
+            if ((flags & (int)InternalTaskOptions.ContinuationTask) != 0)
             {
                 ThrowHelper.ThrowInvalidOperationException(ExceptionResource.Task_Start_ContinuationTask);
             }
@@ -1045,20 +1032,19 @@ namespace System.Threading.Tasks
             int flags = m_stateFlags;
 
             // Can't call this method on a continuation task
-            TaskCreationOptions options = OptionsMethod(flags);
-            if ((options & (TaskCreationOptions)InternalTaskOptions.ContinuationTask) != 0)
+            if ((flags & (int)InternalTaskOptions.ContinuationTask) != 0)
             {
                 ThrowHelper.ThrowInvalidOperationException(ExceptionResource.Task_RunSynchronously_Continuation);
             }
 
             // Can't call this method on a promise-style task
-            if ((options & (TaskCreationOptions)InternalTaskOptions.PromiseTask) != 0)
+            if ((flags & (int)InternalTaskOptions.PromiseTask) != 0)
             {
                 ThrowHelper.ThrowInvalidOperationException(ExceptionResource.Task_RunSynchronously_Promise);
             }
 
             // Can't call this method on a task that has already completed
-            if (IsCompletedMethod(flags))
+            if ((flags & (int)TaskStateFlags.CompletedMask) != 0)
             {
                 ThrowHelper.ThrowInvalidOperationException(ExceptionResource.Task_RunSynchronously_TaskCompleted);
             }
@@ -1370,21 +1356,7 @@ namespace System.Threading.Tasks
         /// <see cref="TaskStatus.Faulted">Faulted</see>, or
         /// <see cref="TaskStatus.Canceled">Canceled</see>.
         /// </remarks>
-        public bool IsCompleted
-        {
-            get
-            {
-                int stateFlags = m_stateFlags; // enable inlining of IsCompletedMethod by "cast"ing away the volatility
-                return IsCompletedMethod(stateFlags);
-            }
-        }
-
-        // Similar to IsCompleted property, but allows for the use of a cached flags value
-        // rather than reading the volatile m_stateFlags field.
-        private static bool IsCompletedMethod(int flags)
-        {
-            return (flags & (int)TaskStateFlags.CompletedMask) != 0;
-        }
+        public bool IsCompleted => (m_stateFlags & (int)TaskStateFlags.CompletedMask) != 0;
 
         public bool IsCompletedSuccessfully => (m_stateFlags & (int)TaskStateFlags.RanToCompletion) != 0;
 
@@ -1942,7 +1914,6 @@ namespace System.Threading.Tasks
         {
             Task? parent = m_contingentProperties?.m_parent;
             if ((parent != null)
-                && ((Options & TaskCreationOptions.AttachedToParent) != 0)
                 && ((parent.CreationOptions & TaskCreationOptions.DenyChildAttach) == 0)
                 && InternalCurrent == parent)
             {
@@ -2059,7 +2030,7 @@ namespace System.Threading.Tasks
 
             // Set the completion event if it's been lazy allocated.
             // And if we made a cancellation registration, it's now unnecessary.
-            cp = Volatile.Read(ref m_contingentProperties); // need to re-read after updating state
+            cp = m_contingentProperties; // need to re-read after updating state
             if (cp != null)
             {
                 cp.SetCompleted();
@@ -2093,19 +2064,17 @@ namespace System.Threading.Tasks
                 cp.m_capturedContext = null;
 
                 // Notify parent if this was an attached task
-                NotifyParentIfPotentiallyAttachedTask();
+                NotifyParentIfPotentiallyAttachedTask(cp);
             }
 
             // Activate continuations (if any).
             FinishContinuations();
         }
 
-        internal void NotifyParentIfPotentiallyAttachedTask()
+        internal void NotifyParentIfPotentiallyAttachedTask(ContingentProperties props)
         {
-            Task? parent = m_contingentProperties?.m_parent;
-            if (parent != null
-                 && ((parent.CreationOptions & TaskCreationOptions.DenyChildAttach) == 0)
-                 && (((TaskCreationOptions)(m_stateFlags & (int)TaskStateFlags.OptionsMask)) & TaskCreationOptions.AttachedToParent) != 0)
+            Task? parent = props.m_parent;
+            if (parent != null && (parent.Options & TaskCreationOptions.DenyChildAttach) == 0)
             {
                 parent.ProcessChildCompletion(this);
             }
@@ -3263,7 +3232,7 @@ namespace System.Threading.Tasks
             Interlocked.Exchange(ref m_stateFlags, m_stateFlags | (int)TaskStateFlags.Canceled);
 
             // Fire completion event if it has been lazily initialized
-            ContingentProperties? cp = Volatile.Read(ref m_contingentProperties);
+            ContingentProperties? cp = m_contingentProperties;
             if (cp != null)
             {
                 cp.SetCompleted();
@@ -3301,7 +3270,7 @@ namespace System.Threading.Tasks
                 ContingentProperties? props = m_contingentProperties;
                 if (props != null)
                 {
-                    NotifyParentIfPotentiallyAttachedTask();
+                    NotifyParentIfPotentiallyAttachedTask(props);
                     props.SetCompleted();
                 }
                 FinishContinuations();

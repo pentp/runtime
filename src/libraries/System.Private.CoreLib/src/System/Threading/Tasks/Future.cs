@@ -356,14 +356,12 @@ namespace System.Threading.Tasks
         // internal helper function breaks out logic used by TaskCompletionSource
         internal bool TrySetResult(TResult? result)
         {
-            bool returnValue = false;
-
             // "Reserve" the completion for this task, while making sure that: (1) No prior reservation
             // has been made, (2) The result has not already been set, (3) An exception has not previously
             // been recorded, and (4) Cancellation has not been requested.
             //
             // If the reservation is successful, then set the result and finish completion processing.
-            if (AtomicStateUpdate((int)TaskStateFlags.CompletionReserved, (int)TaskStateFlags.CompletionReserved | (int)TaskStateFlags.CompletedMask))
+            if (AtomicStateUpdate((int)TaskStateFlags.CompletionReserved, (int)(TaskStateFlags.CompletionReserved | TaskStateFlags.CompletedMask)))
             {
                 m_result = result;
 
@@ -378,14 +376,14 @@ namespace System.Threading.Tasks
                 ContingentProperties? props = m_contingentProperties;
                 if (props != null)
                 {
-                    NotifyParentIfPotentiallyAttachedTask();
+                    NotifyParentIfPotentiallyAttachedTask(props);
                     props.SetCompleted();
                 }
                 FinishContinuations();
-                returnValue = true;
+                return true;
             }
 
-            return returnValue;
+            return false;
         }
 
         // Transitions the promise task into a successfully completed state with the specified result.
