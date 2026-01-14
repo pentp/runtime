@@ -1418,7 +1418,7 @@ namespace System.Threading.Tasks
             m_task = task;
         }
 
-        public TResult? Result => m_task.Status == TaskStatus.RanToCompletion ? m_task.Result : default;
+        public TResult? Result => m_task.m_result;
         public object? AsyncState => m_task.AsyncState;
         public TaskCreationOptions CreationOptions => m_task.CreationOptions;
         public Exception? Exception => m_task.Exception;

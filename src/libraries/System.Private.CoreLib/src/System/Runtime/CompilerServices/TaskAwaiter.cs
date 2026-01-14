@@ -129,38 +129,32 @@ namespace System.Runtime.CompilerServices
             Debug.Assert(task.IsCompleted, "Task must have been completed by now.");
             Debug.Assert(task.Status != TaskStatus.RanToCompletion, "Task should not be completed successfully.");
 
-            // Handle whether the task has been canceled or faulted
-            switch (task.Status)
+            // If the task completed in a canceled state, throw an OperationCanceledException.
+            // This will either be the OCE that actually caused the task to cancel, or it will be a new
+            // TaskCanceledException. TCE derives from OCE, and by throwing it we automatically pick up the
+            // completed task's CancellationToken if it has one, including that CT in the OCE.
+            if (task.IsCanceled)
             {
-                // If the task completed in a canceled state, throw an OperationCanceledException.
-                // This will either be the OCE that actually caused the task to cancel, or it will be a new
-                // TaskCanceledException. TCE derives from OCE, and by throwing it we automatically pick up the
-                // completed task's CancellationToken if it has one, including that CT in the OCE.
-                case TaskStatus.Canceled:
-                    ExceptionDispatchInfo? oceEdi = task.GetCancellationExceptionDispatchInfo();
-                    if (oceEdi != null)
-                    {
-                        oceEdi.Throw();
-                        Debug.Fail("Throw() should have thrown");
-                    }
-                    throw new TaskCanceledException(task);
-
-                // If the task faulted, throw its first exception,
-                // even if it contained more than one.
-                case TaskStatus.Faulted:
-                    List<ExceptionDispatchInfo> edis = task.GetExceptionDispatchInfos();
-                    if (edis.Count > 0)
-                    {
-                        edis[0].Throw();
-                        Debug.Fail("Throw() should have thrown");
-                        break; // Necessary to compile: non-reachable, but compiler can't determine that
-                    }
-                    else
-                    {
-                        Debug.Fail("There should be exceptions if we're Faulted.");
-                        throw task.Exception!;
-                    }
+                ExceptionDispatchInfo? oceEdi = task.GetCancellationExceptionDispatchInfo();
+                if (oceEdi != null)
+                {
+                    oceEdi.Throw();
+                    Debug.Fail("Throw() should have thrown");
+                }
+                throw new TaskCanceledException(task);
             }
+
+            // If the task faulted, throw its first exception,
+            // even if it contained more than one.
+            List<ExceptionDispatchInfo> edis = task.GetExceptionDispatchInfos();
+            if (edis.Count > 0)
+            {
+                edis[0].Throw();
+                Debug.Fail("Throw() should have thrown");
+            }
+
+            Debug.Fail("There should be exceptions if we're Faulted.");
+            throw task.Exception!;
         }
 
         /// <summary>Schedules the continuation onto the <see cref="Task"/> associated with this <see cref="TaskAwaiter"/>.</summary>

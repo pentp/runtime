@@ -6350,7 +6350,7 @@ namespace System.Threading.Tasks
                         else
                         {
                             Debug.Assert(task.Status == TaskStatus.RanToCompletion);
-                            results[i] = task.GetResultCore(waitCompletionNotification: false); // avoid Result, which would triggering debug notification
+                            results[i] = task.m_result!; // avoid Result, which would triggering debug notification
                         }
 
                         // Regardless of completion state, if the task has its debug bit set, transfer it to the
@@ -7382,21 +7382,18 @@ namespace System.Threading.Tasks
             // Bump our state before proceeding any further
             _state = STATE_WAITING_ON_INNER_TASK;
 
-            switch (task.Status)
+            if (!task.IsCompletedSuccessfully)
             {
                 // If the outer task did not complete successfully, then record the
                 // cancellation/fault information to tcs.Task.
-                case TaskStatus.Canceled:
-                case TaskStatus.Faulted:
-                    bool result = TrySetFromTask(task, _lookForOce);
-                    Debug.Assert(result, "Expected TrySetFromTask from outer task to succeed");
-                    break;
-
+                bool result = TrySetFromTask(task, _lookForOce);
+                Debug.Assert(result, "Expected TrySetFromTask from outer task to succeed");
+            }
+            else
+            {
                 // Otherwise, process the inner task it returned.
-                case TaskStatus.RanToCompletion:
-                    ProcessInnerTask(task is Task<Task<TResult>> taskOfTaskOfTResult ? // it's either a Task<Task> or Task<Task<TResult>>
-                        taskOfTaskOfTResult.Result : ((Task<Task>)task).Result);
-                    break;
+                ProcessInnerTask(task is Task<Task<TResult>> taskOfTaskOfTResult ? // it's either a Task<Task> or Task<Task<TResult>>
+                    taskOfTaskOfTResult.Result : ((Task<Task>)task).Result);
             }
         }
 
@@ -7411,39 +7408,36 @@ namespace System.Threading.Tasks
             if (TplEventSource.Log.IsEnabled())
                 TplEventSource.Log.TraceOperationRelation(this.Id, CausalityRelation.Join);
 
-            bool result = false;
-            switch (task.Status)
+            int flags = task.m_stateFlags;
+            if ((flags & (int)TaskStateFlags.Canceled) != 0)
+                return TrySetCanceled(task.CancellationToken, task.GetCancellationExceptionDispatchInfo());
+
+            if ((flags & (int)TaskStateFlags.Faulted) != 0)
             {
-                case TaskStatus.Canceled:
-                    result = TrySetCanceled(task.CancellationToken, task.GetCancellationExceptionDispatchInfo());
-                    break;
+                List<ExceptionDispatchInfo> edis = task.GetExceptionDispatchInfos();
+                ExceptionDispatchInfo oceEdi;
+                if (lookForOce && edis.Count > 0 &&
+                    (oceEdi = edis[0]) != null &&
+                    oceEdi.SourceException is OperationCanceledException oce)
+                {
+                    return TrySetCanceled(oce.CancellationToken, oceEdi);
+                }
 
-                case TaskStatus.Faulted:
-                    List<ExceptionDispatchInfo> edis = task.GetExceptionDispatchInfos();
-                    ExceptionDispatchInfo oceEdi;
-                    if (lookForOce && edis.Count > 0 &&
-                        (oceEdi = edis[0]) != null &&
-                        oceEdi.SourceException is OperationCanceledException oce)
-                    {
-                        result = TrySetCanceled(oce.CancellationToken, oceEdi);
-                    }
-                    else
-                    {
-                        result = TrySetException(edis);
-                    }
-                    break;
-
-                case TaskStatus.RanToCompletion:
-                    if (TplEventSource.Log.IsEnabled())
-                        TplEventSource.Log.TraceOperationEnd(this.Id, AsyncCausalityStatus.Completed);
-
-                    if (s_asyncDebuggingEnabled)
-                        RemoveFromActiveTasks(this);
-
-                    result = TrySetResult(task is Task<TResult> taskTResult ? taskTResult.Result : default);
-                    break;
+                return TrySetException(edis);
             }
-            return result;
+
+            if ((flags & (int)TaskStateFlags.RanToCompletion) != 0)
+            {
+                if (TplEventSource.Log.IsEnabled())
+                    TplEventSource.Log.TraceOperationEnd(this.Id, AsyncCausalityStatus.Completed);
+
+                if (s_asyncDebuggingEnabled)
+                    RemoveFromActiveTasks(this);
+
+                return TrySetResult(task is Task<TResult> taskTResult ? taskTResult.Result : default);
+            }
+
+            return false;
         }
 
         /// <summary>
