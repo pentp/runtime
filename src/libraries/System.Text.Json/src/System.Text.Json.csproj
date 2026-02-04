@@ -323,7 +323,6 @@ The System.Text.Json library is built-in as part of the shared framework in .NET
     <Compile Include="System\Text\Json\Writer\Utf8JsonWriter.WriteProperties.Decimal.cs" />
     <Compile Include="System\Text\Json\Writer\Utf8JsonWriter.WriteProperties.Double.cs" />
     <Compile Include="System\Text\Json\Writer\Utf8JsonWriter.WriteProperties.Float.cs" />
-    <Compile Include="System\Text\Json\Writer\Utf8JsonWriter.WriteProperties.FormattedNumber.cs" />
     <Compile Include="System\Text\Json\Writer\Utf8JsonWriter.WriteProperties.Guid.cs" />
     <Compile Include="System\Text\Json\Writer\Utf8JsonWriter.WriteProperties.Helpers.cs" />
     <Compile Include="System\Text\Json\Writer\Utf8JsonWriter.WriteProperties.Literal.cs" />
