@@ -2,13 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Buffers;
-using System.Buffers.Text;
 using System.Diagnostics;
 using System.Text.Encodings.Web;
-
-#if !NET
-using System.Runtime.CompilerServices;
-#endif
 
 namespace System.Text.Json
 {
@@ -41,12 +36,6 @@ namespace System.Text.Json
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // U+00F0..U+00FF
         ];
-
-#if NET
-        private const string HexFormatString = "X4";
-#endif
-
-        private static readonly StandardFormat s_hexStandardFormat = new StandardFormat('X', 4);
 
         private static bool NeedsEscaping(byte value) => AllowList[value] == 0;
 
@@ -84,7 +73,7 @@ namespace System.Text.Json
             return firstIndexToEscape + JsonConstants.MaxExpansionFactorWhileEscaping * (textLength - firstIndexToEscape);
         }
 
-        private static void EscapeString(ReadOnlySpan<byte> value, Span<byte> destination, JavaScriptEncoder encoder, ref int consumed, ref int written, bool isFinalBlock)
+        private static int EscapeString(ReadOnlySpan<byte> value, Span<byte> destination, JavaScriptEncoder encoder, ref int consumed, int written, bool isFinalBlock)
         {
             Debug.Assert(encoder != null);
 
@@ -100,101 +89,87 @@ namespace System.Text.Json
 
             Debug.Assert(encoderBytesConsumed == value.Length || (result == OperationStatus.NeedMoreData && !isFinalBlock));
 
-            written += encoderBytesWritten;
             consumed += encoderBytesConsumed;
+            return written + encoderBytesWritten;
         }
 
         public static void EscapeString(ReadOnlySpan<byte> value, Span<byte> destination, int indexOfFirstByteToEscape, JavaScriptEncoder? encoder, out int written)
-            => EscapeString(value, destination, indexOfFirstByteToEscape, encoder, out _, out written, isFinalBlock: true);
+            => written = EscapeString(value, destination, indexOfFirstByteToEscape, encoder, out _, isFinalBlock: true);
 
-        public static void EscapeString(ReadOnlySpan<byte> value, Span<byte> destination, int indexOfFirstByteToEscape, JavaScriptEncoder? encoder, out int consumed, out int written, bool isFinalBlock = true)
+        public static int EscapeString(ReadOnlySpan<byte> value, Span<byte> destination, int indexOfFirstByteToEscape, JavaScriptEncoder? encoder, out int consumed, bool isFinalBlock = true)
         {
             Debug.Assert(indexOfFirstByteToEscape >= 0 && indexOfFirstByteToEscape < value.Length);
 
             value.Slice(0, indexOfFirstByteToEscape).CopyTo(destination);
-            written = indexOfFirstByteToEscape;
-            consumed = indexOfFirstByteToEscape;
+            int written = indexOfFirstByteToEscape;
 
             if (encoder != null)
             {
                 destination = destination.Slice(indexOfFirstByteToEscape);
                 value = value.Slice(indexOfFirstByteToEscape);
-                EscapeString(value, destination, encoder, ref consumed, ref written, isFinalBlock);
+                consumed = indexOfFirstByteToEscape;
+                return EscapeString(value, destination, encoder, ref consumed, written, isFinalBlock);
             }
             else
             {
                 // For performance when no encoder is specified, perform escaping here for Ascii and on the
                 // first occurrence of a non-Ascii character, then call into the default encoder.
-                while (indexOfFirstByteToEscape < value.Length)
+                for (; (uint)indexOfFirstByteToEscape < (uint)value.Length; indexOfFirstByteToEscape++)
                 {
                     byte val = value[indexOfFirstByteToEscape];
-                    if (IsAsciiValue(val))
+                    if (!NeedsEscaping(val))
                     {
-                        if (NeedsEscaping(val))
-                        {
-                            EscapeNextBytes(val, destination, ref written);
-                            indexOfFirstByteToEscape++;
-                            consumed++;
-                        }
-                        else
-                        {
-                            destination[written] = val;
-                            written++;
-                            indexOfFirstByteToEscape++;
-                            consumed++;
-                        }
+                        destination[written++] = val;
+                    }
+                    else if (IsAsciiValue(val))
+                    {
+                        written += EscapeNextBytes(val, destination, written);
                     }
                     else
                     {
                         // Fall back to default encoder.
                         destination = destination.Slice(written);
                         value = value.Slice(indexOfFirstByteToEscape);
-                        EscapeString(value, destination, JavaScriptEncoder.Default, ref consumed, ref written, isFinalBlock);
-                        break;
+                        consumed = indexOfFirstByteToEscape;
+                        return EscapeString(value, destination, JavaScriptEncoder.Default, ref consumed, written, isFinalBlock);
                     }
                 }
+                consumed = indexOfFirstByteToEscape;
+                return written;
             }
         }
 
-        private static void EscapeNextBytes(byte value, Span<byte> destination, ref int written)
+        private static int EscapeNextBytes(byte value, Span<byte> destination, int written)
         {
-            destination[written++] = (byte)'\\';
+            destination = destination.Slice(written, 6);
             switch (value)
             {
                 case JsonConstants.Quote:
                     // Optimize for the common quote case.
-                    destination[written++] = (byte)'u';
-                    destination[written++] = (byte)'0';
-                    destination[written++] = (byte)'0';
-                    destination[written++] = (byte)'2';
-                    destination[written++] = (byte)'2';
-                    break;
+                    "\\u0022"u8.CopyTo(destination);
+                    return 6;
                 case JsonConstants.LineFeed:
-                    destination[written++] = (byte)'n';
-                    break;
+                    "\\n"u8.CopyTo(destination);
+                    return 2;
                 case JsonConstants.CarriageReturn:
-                    destination[written++] = (byte)'r';
-                    break;
+                    "\\r"u8.CopyTo(destination);
+                    return 2;
                 case JsonConstants.Tab:
-                    destination[written++] = (byte)'t';
-                    break;
+                    "\\t"u8.CopyTo(destination);
+                    return 2;
                 case JsonConstants.BackSlash:
-                    destination[written++] = (byte)'\\';
-                    break;
+                    "\\\\"u8.CopyTo(destination);
+                    return 2;
                 case JsonConstants.BackSpace:
-                    destination[written++] = (byte)'b';
-                    break;
+                    "\\b"u8.CopyTo(destination);
+                    return 2;
                 case JsonConstants.FormFeed:
-                    destination[written++] = (byte)'f';
-                    break;
+                    "\\f"u8.CopyTo(destination);
+                    return 2;
                 default:
-                    destination[written++] = (byte)'u';
-
-                    bool result = Utf8Formatter.TryFormat(value, destination.Slice(written), out int bytesWritten, format: s_hexStandardFormat);
-                    Debug.Assert(result);
-                    Debug.Assert(bytesWritten == 4);
-                    written += bytesWritten;
-                    break;
+                    "\\u00"u8.CopyTo(destination);
+                    HexConverter.ToBytesBuffer(value, destination, 4);
+                    return 6;
             }
         }
 
@@ -202,7 +177,7 @@ namespace System.Text.Json
 
         private static bool IsAsciiValue(char value) => value <= LastAsciiCharacter;
 
-        private static void EscapeString(ReadOnlySpan<char> value, Span<char> destination, JavaScriptEncoder encoder, ref int consumed, ref int written, bool isFinalBlock)
+        private static int EscapeString(ReadOnlySpan<char> value, Span<char> destination, JavaScriptEncoder encoder, ref int consumed, int written, bool isFinalBlock)
         {
             Debug.Assert(encoder != null);
 
@@ -218,48 +193,43 @@ namespace System.Text.Json
 
             Debug.Assert(encoderBytesConsumed == value.Length || (result == OperationStatus.NeedMoreData && !isFinalBlock));
 
-            written += encoderCharsWritten;
             consumed += encoderBytesConsumed;
+            return written + encoderCharsWritten;
         }
 
         public static void EscapeString(ReadOnlySpan<char> value, Span<char> destination, int indexOfFirstByteToEscape, JavaScriptEncoder? encoder, out int written)
-            => EscapeString(value, destination, indexOfFirstByteToEscape, encoder, out _, out written, isFinalBlock: true);
+            => written = EscapeString(value, destination, indexOfFirstByteToEscape, encoder, out _, isFinalBlock: true);
 
-        public static void EscapeString(ReadOnlySpan<char> value, Span<char> destination, int indexOfFirstByteToEscape, JavaScriptEncoder? encoder, out int consumed, out int written, bool isFinalBlock = true)
+        public static int EscapeString(ReadOnlySpan<char> value, Span<char> destination, int indexOfFirstByteToEscape, JavaScriptEncoder? encoder, out int consumed, bool isFinalBlock = true)
         {
             Debug.Assert(indexOfFirstByteToEscape >= 0 && indexOfFirstByteToEscape < value.Length);
 
             value.Slice(0, indexOfFirstByteToEscape).CopyTo(destination);
-            written = indexOfFirstByteToEscape;
-            consumed = indexOfFirstByteToEscape;
+            int written = indexOfFirstByteToEscape;
 
             if (encoder != null)
             {
                 destination = destination.Slice(indexOfFirstByteToEscape);
                 value = value.Slice(indexOfFirstByteToEscape);
-                EscapeString(value, destination, encoder, ref consumed, ref written, isFinalBlock);
+                consumed = indexOfFirstByteToEscape;
+                return EscapeString(value, destination, encoder, ref consumed, written, isFinalBlock);
             }
             else
             {
                 // For performance when no encoder is specified, perform escaping here for Ascii and on the
                 // first occurrence of a non-Ascii character, then call into the default encoder.
-                while (indexOfFirstByteToEscape < value.Length)
+                for (; (uint)indexOfFirstByteToEscape < (uint)value.Length; indexOfFirstByteToEscape++)
                 {
                     char val = value[indexOfFirstByteToEscape];
                     if (IsAsciiValue(val))
                     {
                         if (NeedsEscapingNoBoundsCheck(val))
                         {
-                            EscapeNextChars(val, destination, ref written);
-                            indexOfFirstByteToEscape++;
-                            consumed++;
+                            written += EscapeNextChars(val, destination, written);
                         }
                         else
                         {
-                            destination[written] = val;
-                            written++;
-                            indexOfFirstByteToEscape++;
-                            consumed++;
+                            destination[written++] = val;
                         }
                     }
                     else
@@ -267,69 +237,49 @@ namespace System.Text.Json
                         // Fall back to default encoder.
                         destination = destination.Slice(written);
                         value = value.Slice(indexOfFirstByteToEscape);
-                        EscapeString(value, destination, JavaScriptEncoder.Default, ref consumed, ref written, isFinalBlock);
-                        break;
+                        consumed = indexOfFirstByteToEscape;
+                        return EscapeString(value, destination, JavaScriptEncoder.Default, ref consumed, written, isFinalBlock);
                     }
                 }
+                consumed = indexOfFirstByteToEscape;
+                return written;
             }
         }
 
-        private static void EscapeNextChars(char value, Span<char> destination, ref int written)
+        private static int EscapeNextChars(char value, Span<char> destination, int written)
         {
             Debug.Assert(IsAsciiValue(value));
 
-            destination[written++] = '\\';
+            destination = destination.Slice(written, 6);
             switch ((byte)value)
             {
                 case JsonConstants.Quote:
                     // Optimize for the common quote case.
-                    destination[written++] = 'u';
-                    destination[written++] = '0';
-                    destination[written++] = '0';
-                    destination[written++] = '2';
-                    destination[written++] = '2';
-                    break;
+                    "\\u0022".AsSpan().CopyTo(destination);
+                    return 6;
                 case JsonConstants.LineFeed:
-                    destination[written++] = 'n';
-                    break;
+                    "\\n".AsSpan().CopyTo(destination);
+                    return 2;
                 case JsonConstants.CarriageReturn:
-                    destination[written++] = 'r';
-                    break;
+                    "\\r".AsSpan().CopyTo(destination);
+                    return 2;
                 case JsonConstants.Tab:
-                    destination[written++] = 't';
-                    break;
+                    "\\t".AsSpan().CopyTo(destination);
+                    return 2;
                 case JsonConstants.BackSlash:
-                    destination[written++] = '\\';
-                    break;
+                    "\\\\".AsSpan().CopyTo(destination);
+                    return 2;
                 case JsonConstants.BackSpace:
-                    destination[written++] = 'b';
-                    break;
+                    "\\b".AsSpan().CopyTo(destination);
+                    return 2;
                 case JsonConstants.FormFeed:
-                    destination[written++] = 'f';
-                    break;
+                    "\\f".AsSpan().CopyTo(destination);
+                    return 2;
                 default:
-                    destination[written++] = 'u';
-#if NET
-                    int intChar = value;
-                    intChar.TryFormat(destination.Slice(written), out int charsWritten, HexFormatString);
-                    Debug.Assert(charsWritten == 4);
-                    written += charsWritten;
-#else
-                    written = WriteHex(value, destination, written);
-#endif
-                    break;
+                    "\\u00".AsSpan().CopyTo(destination);
+                    HexConverter.ToCharsBuffer((byte)value, destination, 4);
+                    return 6;
             }
         }
-
-#if !NET
-        private static int WriteHex(int value, Span<char> destination, int written)
-        {
-            destination[written++] = HexConverter.ToCharUpper(value >> 12);
-            destination[written++] = HexConverter.ToCharUpper(value >> 8);
-            destination[written++] = HexConverter.ToCharUpper(value >> 4);
-            destination[written++] = HexConverter.ToCharUpper(value);
-            return written;
-        }
-#endif
     }
 }

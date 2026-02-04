@@ -10,24 +10,18 @@ namespace System.Text.Json
 {
     internal static partial class JsonWriterHelper
     {
-        private static readonly StandardFormat s_dateTimeStandardFormat = new StandardFormat('O');
-
         public static void WriteDateTimeTrimmed(Span<byte> buffer, DateTime value, out int bytesWritten)
         {
-            Span<byte> tempSpan = stackalloc byte[JsonConstants.MaximumFormatDateTimeOffsetLength];
-            bool result = Utf8Formatter.TryFormat(value, tempSpan, out bytesWritten, s_dateTimeStandardFormat);
+            bool result = Utf8Formatter.TryFormat(value, buffer, out int length, 'O');
             Debug.Assert(result);
-            TrimDateTimeOffset(tempSpan.Slice(0, bytesWritten), out bytesWritten);
-            tempSpan.Slice(0, bytesWritten).CopyTo(buffer);
+            bytesWritten = TrimDateTimeOffset(buffer, length);
         }
 
         public static void WriteDateTimeOffsetTrimmed(Span<byte> buffer, DateTimeOffset value, out int bytesWritten)
         {
-            Span<byte> tempSpan = stackalloc byte[JsonConstants.MaximumFormatDateTimeOffsetLength];
-            bool result = Utf8Formatter.TryFormat(value, tempSpan, out bytesWritten, s_dateTimeStandardFormat);
+            bool result = Utf8Formatter.TryFormat(value, buffer, out int length, 'O');
             Debug.Assert(result);
-            TrimDateTimeOffset(tempSpan.Slice(0, bytesWritten), out bytesWritten);
-            tempSpan.Slice(0, bytesWritten).CopyTo(buffer);
+            bytesWritten = TrimDateTimeOffset(buffer, length);
         }
 
         //
@@ -40,7 +34,7 @@ namespace System.Text.Json
         //   2017-06-12T05:30:45.768-07:00
         //   2017-06-12T05:30:45.00768Z           (Z is short for "+00:00" but also distinguishes DateTimeKind.Utc from DateTimeKind.Local)
         //   2017-06-12T05:30:45                  (interpreted as local time wrt to current time zone)
-        public static void TrimDateTimeOffset(Span<byte> buffer, out int bytesWritten)
+        private static int TrimDateTimeOffset(Span<byte> buffer, int length)
         {
             const int maxDateTimeLength = JsonConstants.MaximumFormatDateTimeLength;
 
@@ -48,9 +42,9 @@ namespace System.Text.Json
             // YYYY-MM-DDThh:mm:ss.fffffff (JsonConstants.MaximumFormatDateTimeLength)
             // YYYY-MM-DDThh:mm:ss.fffffffZ (JsonConstants.MaximumFormatDateTimeLength + 1)
             // YYYY-MM-DDThh:mm:ss.fffffff(+|-)hh:mm (JsonConstants.MaximumFormatDateTimeOffsetLength)
-            Debug.Assert(buffer.Length == maxDateTimeLength ||
-                buffer.Length == maxDateTimeLength + 1 ||
-                buffer.Length == JsonConstants.MaximumFormatDateTimeOffsetLength);
+            Debug.Assert(length == maxDateTimeLength ||
+                length == maxDateTimeLength + 1 ||
+                length == JsonConstants.MaximumFormatDateTimeOffsetLength);
 
             // Find the last significant digit.
             int curIndex;
@@ -74,27 +68,21 @@ namespace System.Text.Json
             else
             {
                 // There is nothing to trim.
-                bytesWritten = buffer.Length;
-                return;
+                return length;
             }
 
             // We are either trimming a DateTimeOffset, or a DateTime with
             // DateTimeKind.Local or DateTimeKind.Utc
-            if (buffer.Length == maxDateTimeLength)
+            if (length == maxDateTimeLength)
             {
                 // There is no offset to copy.
-                bytesWritten = curIndex;
+                return curIndex;
             }
-            else if (buffer.Length == JsonConstants.MaximumFormatDateTimeOffsetLength)
+            else if (length == JsonConstants.MaximumFormatDateTimeOffsetLength)
             {
                 // We have a non-UTC offset (+|-)hh:mm that are 6 characters to copy.
-                buffer[curIndex] = buffer[maxDateTimeLength];
-                buffer[curIndex + 1] = buffer[maxDateTimeLength + 1];
-                buffer[curIndex + 2] = buffer[maxDateTimeLength + 2];
-                buffer[curIndex + 3] = buffer[maxDateTimeLength + 3];
-                buffer[curIndex + 4] = buffer[maxDateTimeLength + 4];
-                buffer[curIndex + 5] = buffer[maxDateTimeLength + 5];
-                bytesWritten = curIndex + 6;
+                buffer.Slice(maxDateTimeLength, 6).CopyTo(buffer.Slice(curIndex, 6));
+                return curIndex + 6;
             }
             else
             {
@@ -102,7 +90,7 @@ namespace System.Text.Json
                 Debug.Assert(buffer[maxDateTimeLength] == 'Z');
 
                 buffer[curIndex] = (byte)'Z';
-                bytesWritten = curIndex + 1;
+                return curIndex + 1;
             }
         }
     }

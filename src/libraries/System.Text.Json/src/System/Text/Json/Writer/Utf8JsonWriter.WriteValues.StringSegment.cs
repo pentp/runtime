@@ -143,7 +143,7 @@ namespace System.Text.Json
                 stackalloc char[JsonConstants.StackallocCharThreshold] :
                 (valueArray = ArrayPool<char>.Shared.Rent(length));
 
-            JsonWriterHelper.EscapeString(value, escapedValue, firstEscapeIndexVal, _options.Encoder, out int consumed, out int written, isFinalSegment);
+            int written = JsonWriterHelper.EscapeString(value, escapedValue, firstEscapeIndexVal, _options.Encoder, out int consumed, isFinalSegment);
 
             WriteStringSegmentData(escapedValue.Slice(0, written));
 
@@ -309,7 +309,7 @@ namespace System.Text.Json
                 stackalloc byte[JsonConstants.StackallocByteThreshold] :
                 (valueArray = ArrayPool<byte>.Shared.Rent(length));
 
-            JsonWriterHelper.EscapeString(utf8Value, escapedValue, firstEscapeIndexVal, _options.Encoder, out int consumed, out int written, isFinalSegment);
+            int written = JsonWriterHelper.EscapeString(utf8Value, escapedValue, firstEscapeIndexVal, _options.Encoder, out int consumed, isFinalSegment);
 
             WriteStringSegmentData(escapedValue.Slice(0, written));
 
