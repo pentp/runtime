@@ -217,12 +217,13 @@ namespace System.Text.Json
             // Optionally, 1 list separator, and up to 3x growth when transcoding
             int maxRequired = (escapedPropertyName.Length * JsonConstants.MaxExpansionFactorWhileTranscoding) + JsonConstants.MaximumFormatGuidLength + 6;
 
-            if (_memory.Length - BytesPending < maxRequired)
+            if (_memory.Length - this.BytesPending < maxRequired)
             {
                 Grow(maxRequired);
             }
 
             Span<byte> output = _memory.Span;
+            int BytesPending = this.BytesPending;
 
             if (_currentDepth < 0)
             {
@@ -242,6 +243,7 @@ namespace System.Text.Json
             BytesPending += bytesWritten;
 
             output[BytesPending++] = JsonConstants.Quote;
+            this.BytesPending = BytesPending;
         }
 
         private void WriteStringMinimized(ReadOnlySpan<byte> escapedPropertyName, Guid value)
@@ -251,12 +253,13 @@ namespace System.Text.Json
             int minRequired = escapedPropertyName.Length + JsonConstants.MaximumFormatGuidLength + 5; // 2 quotes for property name, 2 quotes for date, and 1 colon
             int maxRequired = minRequired + 1; // Optionally, 1 list separator
 
-            if (_memory.Length - BytesPending < maxRequired)
+            if (_memory.Length - this.BytesPending < maxRequired)
             {
                 Grow(maxRequired);
             }
 
             Span<byte> output = _memory.Span;
+            int BytesPending = this.BytesPending;
 
             if (_currentDepth < 0)
             {
@@ -277,6 +280,7 @@ namespace System.Text.Json
             BytesPending += bytesWritten;
 
             output[BytesPending++] = JsonConstants.Quote;
+            this.BytesPending = BytesPending;
         }
 
         private void WriteStringIndented(ReadOnlySpan<char> escapedPropertyName, Guid value)

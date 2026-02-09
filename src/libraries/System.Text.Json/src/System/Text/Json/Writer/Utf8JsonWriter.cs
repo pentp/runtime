@@ -81,7 +81,7 @@ namespace System.Text.Json
         private int _indentLength;
 
         // A length of 1 will emit LF for indented writes, a length of 2 will emit CRLF. Other values are invalid.
-        private int _newLineLength;
+        private byte _newLineLength;
 
         /// <summary>
         /// Returns the amount of bytes written by the <see cref="Utf8JsonWriter"/> so far
@@ -252,7 +252,7 @@ namespace System.Text.Json
             _indentLength = options.IndentSize;
 
             Debug.Assert(options.NewLine is "\n" or "\r\n", "Invalid NewLine string.");
-            _newLineLength = options.NewLine.Length;
+            _newLineLength = (byte)options.NewLine.Length;
 
             if (_options.MaxDepth == 0)
             {
@@ -1257,7 +1257,7 @@ namespace System.Text.Json
         /// <summary>
         /// Indicates whether the writer is currently writing a partial string value.
         /// </summary>
-        private bool IsWritingPartialString => _enclosingContainer >= EnclosingContainerType.Utf8StringSequence;
+        private bool IsWritingPartialString => (sbyte)_enclosingContainer >= (sbyte)EnclosingContainerType.Utf8StringSequence;
 
         /// <summary>
         /// The type of container that is enclosing the current position. The underlying values have been chosen
@@ -1278,30 +1278,30 @@ namespace System.Text.Json
             Object = JsonTokenType.PropertyName,
 
             /// <summary>
-            /// JSON array. Chosen so that its lower nibble is 0 to ensure it does not conflict with <see cref="JsonTokenType"/> numeric values that currently are less than 16.
+            /// JSON array. Chosen so that it's negative and does not conflict with <see cref="JsonTokenType"/> numeric values that currently are less than 16.
             /// </summary>
-            Array = 0x10,
+            Array = 0x80,
 
             /// <summary>
             /// Partial UTF-8 string. This is a container if viewed as an array of "utf-8 string segment"-typed values. This array can only be one level deep
             /// so <see cref="_bitStack"/> does not need to store its state.
             /// <see cref="IsWritingPartialString"/> relies on the value of the partial string members being the largest values of this enum.
             /// </summary>
-            Utf8StringSequence = 0x20,
+            Utf8StringSequence = 0x10,
 
             /// <summary>
             /// Partial UTF-16 string. This is a container if viewed as an array of "utf-16 string segment"-typed values. This array can only be one level deep
             /// so <see cref="_bitStack"/> does not need to store its state.
             /// <see cref="IsWritingPartialString"/> relies on the value of the partial string members being the largest values of this enum.
             /// </summary>
-            Utf16StringSequence = 0x30,
+            Utf16StringSequence = 0x20,
 
             /// <summary>
             /// Partial Base64 string. This is a container if viewed as an array of "base64 string segment"-typed values. This array can only be one level deep
             /// so <see cref="_bitStack"/> does not need to store its state.
             /// <see cref="IsWritingPartialString"/> relies on the value of the partial string members being the largest values of this enum.
             /// </summary>
-            Base64StringSequence = 0x40,
+            Base64StringSequence = 0x30,
         }
     }
 }

@@ -28,13 +28,13 @@ namespace System.Text.Json
         {
             JsonWriterHelper.ValidateValue(value);
 
-            if (!_options.SkipValidation)
-            {
-                ValidateWritingSegment(EnclosingContainerType.Utf16StringSequence);
-            }
-
             if (_enclosingContainer != EnclosingContainerType.Utf16StringSequence)
             {
+                if (!_options.SkipValidation && !CanWriteValue)
+                {
+                    OnValidateWritingSegmentFailed(EnclosingContainerType.Utf16StringSequence);
+                }
+
                 WriteStringSegmentPrologue();
                 _enclosingContainer = EnclosingContainerType.Utf16StringSequence;
             }
@@ -196,13 +196,13 @@ namespace System.Text.Json
         {
             JsonWriterHelper.ValidateValue(value);
 
-            if (!_options.SkipValidation)
-            {
-                ValidateWritingSegment(EnclosingContainerType.Utf8StringSequence);
-            }
-
             if (_enclosingContainer != EnclosingContainerType.Utf8StringSequence)
             {
+                if (!_options.SkipValidation && !CanWriteValue)
+                {
+                    OnValidateWritingSegmentFailed(EnclosingContainerType.Utf8StringSequence);
+                }
+
                 WriteStringSegmentPrologue();
                 _enclosingContainer = EnclosingContainerType.Utf8StringSequence;
             }
@@ -363,13 +363,13 @@ namespace System.Text.Json
                 ThrowHelper.ThrowArgumentException_ValueTooLarge(value.Length);
             }
 
-            if (!_options.SkipValidation)
-            {
-                ValidateWritingSegment(EnclosingContainerType.Base64StringSequence);
-            }
-
             if (_enclosingContainer != EnclosingContainerType.Base64StringSequence)
             {
+                if (!_options.SkipValidation && !CanWriteValue)
+                {
+                    OnValidateWritingSegmentFailed(EnclosingContainerType.Base64StringSequence);
+                }
+
                 WriteStringSegmentPrologue();
                 _enclosingContainer = EnclosingContainerType.Base64StringSequence;
             }
