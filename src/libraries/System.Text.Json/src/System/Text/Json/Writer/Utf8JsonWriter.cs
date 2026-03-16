@@ -582,8 +582,7 @@ namespace System.Text.Json
                 WriteStartMinimized(token);
             }
 
-            _currentDepth &= JsonConstants.RemoveFlagsBitMask;
-            _currentDepth++;
+            _currentDepth = (_currentDepth & JsonConstants.RemoveFlagsBitMask) + 1;
         }
 
         private void WriteStartMinimized(byte token)
@@ -689,8 +688,7 @@ namespace System.Text.Json
             if (_tokenType is not JsonTokenType.PropertyName and not JsonTokenType.None || _commentAfterNoneOrPropertyName)
             {
                 WriteNewLine(output);
-                WriteIndentation(output.Slice(BytesPending), indent);
-                BytesPending += indent;
+                WriteIndentation(output, indent);
             }
 
             output[BytesPending++] = token;
@@ -732,8 +730,7 @@ namespace System.Text.Json
 
             WriteStartByOptions(utf8PropertyName, token);
 
-            _currentDepth &= JsonConstants.RemoveFlagsBitMask;
-            _currentDepth++;
+            _currentDepth = (_currentDepth & JsonConstants.RemoveFlagsBitMask) + 1;
         }
 
         /// <summary>
@@ -756,8 +753,7 @@ namespace System.Text.Json
 
             WriteStartEscape(utf8PropertyName, JsonConstants.OpenBracket);
 
-            _currentDepth &= JsonConstants.RemoveFlagsBitMask;
-            _currentDepth++;
+            _currentDepth = (_currentDepth & JsonConstants.RemoveFlagsBitMask) + 1;
             _tokenType = JsonTokenType.StartArray;
         }
 
@@ -781,8 +777,7 @@ namespace System.Text.Json
 
             WriteStartEscape(utf8PropertyName, JsonConstants.OpenBrace);
 
-            _currentDepth &= JsonConstants.RemoveFlagsBitMask;
-            _currentDepth++;
+            _currentDepth = (_currentDepth & JsonConstants.RemoveFlagsBitMask) + 1;
             _tokenType = JsonTokenType.StartObject;
         }
 
@@ -905,8 +900,7 @@ namespace System.Text.Json
 
             WriteStartEscape(propertyName, JsonConstants.OpenBracket);
 
-            _currentDepth &= JsonConstants.RemoveFlagsBitMask;
-            _currentDepth++;
+            _currentDepth = (_currentDepth & JsonConstants.RemoveFlagsBitMask) + 1;
             _tokenType = JsonTokenType.StartArray;
         }
 
@@ -930,8 +924,7 @@ namespace System.Text.Json
 
             WriteStartEscape(propertyName, JsonConstants.OpenBrace);
 
-            _currentDepth &= JsonConstants.RemoveFlagsBitMask;
-            _currentDepth++;
+            _currentDepth = (_currentDepth & JsonConstants.RemoveFlagsBitMask) + 1;
             _tokenType = JsonTokenType.StartObject;
         }
 
@@ -1122,9 +1115,7 @@ namespace System.Text.Json
                 Span<byte> output = _memory.Span;
 
                 WriteNewLine(output);
-
-                WriteIndentation(output.Slice(BytesPending), indent);
-                BytesPending += indent;
+                WriteIndentation(output, indent);
 
                 output[BytesPending++] = token;
             }
@@ -1144,7 +1135,32 @@ namespace System.Text.Json
 
         private void WriteIndentation(Span<byte> buffer, int indent)
         {
-            JsonWriterHelper.WriteIndentation(buffer, indent, _indentByte);
+            buffer = buffer.Slice(BytesPending, indent);
+            BytesPending += buffer.Length;
+            byte indentByte = _indentByte;
+
+            // Based on perf tests, the break-even point where vectorized Fill is faster
+            // than explicitly writing the space in a loop is 8.
+            if (buffer.Length < 8)
+            {
+                while (buffer.Length > 1)
+                {
+                    buffer[0] = indentByte;
+                    buffer[1] = indentByte;
+                    buffer = buffer.Slice(2);
+                    if (buffer.Length == 0) return; // JIT bounds check/loop assertions workaround
+                    if (buffer.Length == 1) break; // JIT bounds check/loop assertions workaround
+                }
+
+                if (buffer.Length > 0)
+                {
+                    buffer[0] = indentByte;
+                }
+            }
+            else
+            {
+                buffer.Fill(indentByte);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

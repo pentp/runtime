@@ -98,8 +98,7 @@ namespace System.Text.Json
                 {
                     WriteNewLine(output);
                 }
-                WriteIndentation(output.Slice(BytesPending), indent);
-                BytesPending += indent;
+                WriteIndentation(output, indent);
             }
 
             bool result = Utf8Formatter.TryFormat(value, output.Slice(BytesPending), out int bytesWritten);

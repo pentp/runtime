@@ -127,8 +127,7 @@ namespace System.Text.Json
             if (_tokenType != JsonTokenType.None || _commentAfterNoneOrPropertyName)
             {
                 WriteNewLine(output);
-                WriteIndentation(output.Slice(BytesPending), indent);
-                BytesPending += indent;
+                WriteIndentation(output, indent);
             }
 
             output[BytesPending++] = JsonConstants.Slash;
@@ -233,9 +232,7 @@ namespace System.Text.Json
             if (_tokenType != JsonTokenType.None || _commentAfterNoneOrPropertyName)
             {
                 WriteNewLine(output);
-
-                WriteIndentation(output.Slice(BytesPending), indent);
-                BytesPending += indent;
+                WriteIndentation(output, indent);
             }
 
             output[BytesPending++] = JsonConstants.Slash;

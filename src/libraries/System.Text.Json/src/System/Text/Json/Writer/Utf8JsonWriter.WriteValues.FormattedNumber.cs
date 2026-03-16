@@ -91,8 +91,7 @@ namespace System.Text.Json
                 {
                     WriteNewLine(output);
                 }
-                WriteIndentation(output.Slice(BytesPending), indent);
-                BytesPending += indent;
+                WriteIndentation(output, indent);
             }
 
             utf8Value.CopyTo(output.Slice(BytesPending));

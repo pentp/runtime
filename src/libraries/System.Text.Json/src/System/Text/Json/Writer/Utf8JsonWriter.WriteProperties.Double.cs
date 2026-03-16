@@ -305,8 +305,7 @@ namespace System.Text.Json
                 WriteNewLine(output);
             }
 
-            WriteIndentation(output.Slice(BytesPending), indent);
-            BytesPending += indent;
+            WriteIndentation(output, indent);
 
             output[BytesPending++] = JsonConstants.Quote;
 
@@ -350,8 +349,7 @@ namespace System.Text.Json
                 WriteNewLine(output);
             }
 
-            WriteIndentation(output.Slice(BytesPending), indent);
-            BytesPending += indent;
+            WriteIndentation(output, indent);
 
             output[BytesPending++] = JsonConstants.Quote;
 
