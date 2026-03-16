@@ -6,7 +6,6 @@ using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
 namespace System.Text.Json
 {
@@ -17,6 +16,7 @@ namespace System.Text.Json
         /// <list type="bullet">
         /// <item>
         /// <see cref="EnclosingContainerType.Array"/>: Writing a value is always allowed.
+        /// Because <see cref="EnclosingContainerType.Array"/> is negative when cast to <see cref="sbyte"/>, it overrides the equality checks below.
         /// </item>
         /// <item>
         /// <see cref="EnclosingContainerType.Object"/>: Writing a value is allowed only if <see cref="_tokenType"/> is a property name.
@@ -31,9 +31,12 @@ namespace System.Text.Json
         /// Writing a value is never valid and <see cref="_enclosingContainer"/> does not equal any <see cref="JsonTokenType"/> by construction.
         /// </item>
         /// </list>
-        /// This method performs better without short circuiting (this often gets inlined so using simple branch free code seems to have some benefits).
         /// </summary>
-        private bool CanWriteValue => _enclosingContainer == EnclosingContainerType.Array | (byte)_enclosingContainer == (byte)_tokenType;
+        private bool CanWriteValue
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => ((sbyte)_enclosingContainer ^ (byte)_tokenType) <= 0;
+        }
 
         private bool HasPartialStringData => _partialStringDataLength != 0;
 
@@ -78,21 +81,6 @@ namespace System.Text.Json
                 message = SR.CannotWriteValueAfterPrimitiveOrClose;
             }
             return ThrowHelper.GetInvalidOperationException(SR.Format(message, _tokenType));
-        }
-
-        private void ValidateWritingSegment(EnclosingContainerType currentSegmentEncoding)
-        {
-            Debug.Assert(currentSegmentEncoding is EnclosingContainerType.Utf8StringSequence or EnclosingContainerType.Utf16StringSequence or EnclosingContainerType.Base64StringSequence);
-
-            // A string segment can be written if either:
-            // 1) The writer is currently in a partial string of the same type. In this case the new segment
-            // will continue the partial string.
-            // - or -
-            // 2) The writer can write a value at the current position, in which case a new string can be started.
-            if (_enclosingContainer != currentSegmentEncoding && !CanWriteValue)
-            {
-                OnValidateWritingSegmentFailed(currentSegmentEncoding);
-            }
         }
 
         [DoesNotReturn]
