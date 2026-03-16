@@ -1126,11 +1126,14 @@ namespace System.Text.Json
         {
             // Write '\r\n' OR '\n', depending on the configured new line string
             Debug.Assert(_newLineLength is 1 or 2, "Invalid new line length.");
+            int pos = BytesPending;
             if (_newLineLength == 2)
             {
-                output[BytesPending++] = JsonConstants.CarriageReturn;
+                output[pos] = JsonConstants.CarriageReturn;
+                pos++;
             }
-            output[BytesPending++] = JsonConstants.LineFeed;
+            output[pos] = JsonConstants.LineFeed;
+            BytesPending = pos + 1;
         }
 
         private void WriteIndentation(Span<byte> buffer, int indent)

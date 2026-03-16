@@ -476,7 +476,7 @@ namespace System.Text.Json
             Debug.Assert(indent <= _indentLength * _options.MaxDepth);
 
             // One quote and optionally 1 indent, 1 list separator and 1-2 bytes for new line
-            int bytesRequired = 1 + indent + 1 + _newLineLength;
+            int bytesRequired = 1 + indent + 1 + 2;
             if (_memory.Length - BytesPending < bytesRequired)
             {
                 Grow(bytesRequired);

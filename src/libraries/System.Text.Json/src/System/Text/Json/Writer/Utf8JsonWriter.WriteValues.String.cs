@@ -149,7 +149,7 @@ namespace System.Text.Json
 
             // All ASCII, 2 quotes => indent + escapedValue.Length + 2
             // Optionally, 1 list separator, 1-2 bytes for new line, and up to 3x growth when transcoding
-            int maxRequired = indent + (escapedValue.Length * JsonConstants.MaxExpansionFactorWhileTranscoding) + 3 + _newLineLength;
+            int maxRequired = indent + (escapedValue.Length * JsonConstants.MaxExpansionFactorWhileTranscoding) + 3 + 2;
 
             if (_memory.Length - BytesPending < maxRequired)
             {
@@ -294,7 +294,7 @@ namespace System.Text.Json
             Debug.Assert(escapedValue.Length < int.MaxValue - indent - 3 - _newLineLength);
 
             int minRequired = indent + escapedValue.Length + 2; // 2 quotes
-            int maxRequired = minRequired + 1 + _newLineLength; // Optionally, 1 list separator and 1-2 bytes for new line
+            int maxRequired = minRequired + 1 + 2; // Optionally, 1 list separator and 1-2 bytes for new line
 
             if (_memory.Length - BytesPending < maxRequired)
             {

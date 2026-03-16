@@ -285,7 +285,7 @@ namespace System.Text.Json
 
             // All ASCII, 2 quotes for property name, 2 quotes to surround the base-64 encoded string value, 1 colon, and 1 space => indent + escapedPropertyName.Length + encodedLength + 6
             // Optionally, 1 list separator, 1-2 bytes for new line, and up to 3x growth when transcoding.
-            int maxRequired = indent + (escapedPropertyName.Length * JsonConstants.MaxExpansionFactorWhileTranscoding) + encodedLength + 7 + _newLineLength;
+            int maxRequired = indent + (escapedPropertyName.Length * JsonConstants.MaxExpansionFactorWhileTranscoding) + encodedLength + 7 + 2;
 
             if (_memory.Length - BytesPending < maxRequired)
             {
@@ -334,7 +334,7 @@ namespace System.Text.Json
 
             // 2 quotes for property name, 2 quotes to surround the base-64 encoded string value, 1 colon, and 1 space => indent + escapedPropertyName.Length + encodedLength + 6
             // Optionally, 1 list separator, and 1-2 bytes for new line.
-            int maxRequired = indent + escapedPropertyName.Length + encodedLength + 7 + _newLineLength;
+            int maxRequired = indent + escapedPropertyName.Length + encodedLength + 7 + 2;
 
             if (_memory.Length - BytesPending < maxRequired)
             {

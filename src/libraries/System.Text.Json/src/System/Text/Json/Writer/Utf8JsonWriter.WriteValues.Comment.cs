@@ -115,7 +115,7 @@ namespace System.Text.Json
 
             // All ASCII, /*...*/ => escapedValue.Length + 4
             // Optionally, 1-2 bytes for new line, and up to 3x growth when transcoding
-            int maxRequired = indent + (value.Length * JsonConstants.MaxExpansionFactorWhileTranscoding) + 4 + _newLineLength;
+            int maxRequired = indent + (value.Length * JsonConstants.MaxExpansionFactorWhileTranscoding) + 4 + 2;
 
             if (_memory.Length - BytesPending < maxRequired)
             {
@@ -220,7 +220,7 @@ namespace System.Text.Json
             Debug.Assert(utf8Value.Length < int.MaxValue - indent - 4 - _newLineLength);
 
             int minRequired = indent + utf8Value.Length + 4; // /*...*/
-            int maxRequired = minRequired + _newLineLength; // Optionally, 1-2 bytes for new line
+            int maxRequired = minRequired + 2; // Optionally, 1-2 bytes for new line
 
             if (_memory.Length - BytesPending < maxRequired)
             {
