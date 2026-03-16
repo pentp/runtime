@@ -78,10 +78,10 @@ namespace System.Text.Json
 
         // Cache indentation settings from JsonWriterOptions to avoid recomputing them in the hot path.
         private byte _indentByte;
-        private int _indentLength;
+        private byte _indentLength;
 
         // A length of 1 will emit LF for indented writes, a length of 2 will emit CRLF. Other values are invalid.
-        private int _newLineLength;
+        private byte _newLineLength;
 
         /// <summary>
         /// Returns the amount of bytes written by the <see cref="Utf8JsonWriter"/> so far
@@ -249,10 +249,10 @@ namespace System.Text.Json
         {
             _options = options;
             _indentByte = (byte)_options.IndentCharacter;
-            _indentLength = options.IndentSize;
+            _indentLength = (byte)options.IndentSize;
 
             Debug.Assert(options.NewLine is "\n" or "\r\n", "Invalid NewLine string.");
-            _newLineLength = options.NewLine.Length;
+            _newLineLength = (byte)options.NewLine.Length;
 
             if (_options.MaxDepth == 0)
             {
