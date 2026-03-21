@@ -38,15 +38,14 @@ namespace System.Text.Json
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void PushTrue()
         {
-            if (_currentDepth < AllocationFreeMaxDepth)
+            if (++_currentDepth <= AllocationFreeMaxDepth)
             {
-                _allocationFreeContainer = (_allocationFreeContainer << 1) | 1;
+                _allocationFreeContainer = (_allocationFreeContainer << 1) + 1;
             }
             else
             {
                 PushToArray(true);
             }
-            _currentDepth++;
         }
 
         /// <summary>
@@ -55,7 +54,7 @@ namespace System.Text.Json
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void PushFalse()
         {
-            if (_currentDepth < AllocationFreeMaxDepth)
+            if (++_currentDepth <= AllocationFreeMaxDepth)
             {
                 _allocationFreeContainer <<= 1;
             }
@@ -63,7 +62,6 @@ namespace System.Text.Json
             {
                 PushToArray(false);
             }
-            _currentDepth++;
         }
 
         /// <summary>
@@ -75,7 +73,7 @@ namespace System.Text.Json
         {
             _array ??= new int[DefaultInitialArraySize];
 
-            int index = _currentDepth - AllocationFreeMaxDepth;
+            int index = _currentDepth - AllocationFreeMaxDepth - 1;
 
             Debug.Assert(index >= 0, $"Set - Negative - index: {index}, arrayLength: {_array.Length}");
 
@@ -90,7 +88,7 @@ namespace System.Text.Json
             {
                 // This multiplication can overflow, so cast to uint first.
                 Debug.Assert(index >= 0 && index > (int)((uint)_array.Length * 32 - 1), $"Only grow when necessary - index: {index}, arrayLength: {_array.Length}");
-                DoubleArray(elementIndex);
+                Array.Resize(ref _array, _array.Length * 2);
             }
 
             Debug.Assert(elementIndex < _array.Length, $"Set - index: {index}, elementIndex: {elementIndex}, arrayLength: {_array.Length}, extraBits: {extraBits}");
@@ -108,29 +106,22 @@ namespace System.Text.Json
         }
 
         /// <summary>
-        /// Pops the bit at the top of the stack and returns its value.
+        /// Pops the bit at the top of the stack, but returns the next topmost bit.
         /// </summary>
-        /// <returns>The bit that was popped.</returns>
+        /// <returns>The bit that is at the top of the stack after popping.</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Pop()
         {
-            _currentDepth--;
-            bool inObject;
-            if (_currentDepth < AllocationFreeMaxDepth)
+            if (--_currentDepth < AllocationFreeMaxDepth)
             {
-                _allocationFreeContainer >>= 1;
-                inObject = (_allocationFreeContainer & 1) != 0;
-            }
-            else if (_currentDepth == AllocationFreeMaxDepth)
-            {
-                inObject = (_allocationFreeContainer & 1) != 0;
+                ulong bits = _allocationFreeContainer >>= 1;
+                return (bits & 1) != 0;
             }
             else
             {
                 // Decrementing depth above effectively pops the last element in the array-backed case.
-                inObject = PeekInArray();
+                return PeekInArray();
             }
-            return inObject;
         }
 
         /// <summary>
@@ -140,6 +131,11 @@ namespace System.Text.Json
         [MethodImpl(MethodImplOptions.NoInlining)]
         private readonly bool PeekInArray()
         {
+            if (_currentDepth == AllocationFreeMaxDepth)
+            {
+                return (_allocationFreeContainer & 1) != 0;
+            }
+
             int index = _currentDepth - AllocationFreeMaxDepth - 1;
             Debug.Assert(_array != null);
             Debug.Assert(index >= 0, $"Get - Negative - index: {index}, arrayLength: {_array.Length}");
@@ -159,25 +155,13 @@ namespace System.Text.Json
             // If the stack is small enough, we can use the allocation-free container, otherwise check the allocated array.
             => _currentDepth <= AllocationFreeMaxDepth ? (_allocationFreeContainer & 1) != 0 : PeekInArray();
 
-        private void DoubleArray(int minSize)
-        {
-            Debug.Assert(_array != null);
-            Debug.Assert(_array.Length < int.MaxValue / 2, $"Array too large - arrayLength: {_array.Length}");
-            Debug.Assert(minSize >= 0 && minSize >= _array.Length);
-
-            int nextDouble = Math.Max(minSize + 1, _array.Length * 2);
-            Debug.Assert(nextDouble > minSize);
-
-            Array.Resize(ref _array, nextDouble);
-        }
-
         /// <summary>
         /// Optimization to push <see langword="true"/> as the first bit when the stack is empty.
         /// </summary>
         public void SetFirstBit()
         {
             Debug.Assert(_currentDepth == 0, "Only call SetFirstBit when depth is 0");
-            _currentDepth++;
+            _currentDepth = 1;
             _allocationFreeContainer = 1;
         }
 
@@ -187,7 +171,7 @@ namespace System.Text.Json
         public void ResetFirstBit()
         {
             Debug.Assert(_currentDepth == 0, "Only call ResetFirstBit when depth is 0");
-            _currentDepth++;
+            _currentDepth = 1;
             _allocationFreeContainer = 0;
         }
 

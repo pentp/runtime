@@ -23,6 +23,7 @@ namespace System.Text.Json.Tests
             Assert.Equal(0, bitStack.CurrentDepth);
             bitStack.SetFirstBit();
             Assert.Equal(1, bitStack.CurrentDepth);
+            Assert.True(bitStack.Peek());
             Assert.False(bitStack.Pop());
             Assert.Equal(0, bitStack.CurrentDepth);
 
@@ -30,6 +31,7 @@ namespace System.Text.Json.Tests
             Assert.Equal(0, bitStack.CurrentDepth);
             bitStack.ResetFirstBit();
             Assert.Equal(1, bitStack.CurrentDepth);
+            Assert.False(bitStack.Peek());
             Assert.False(bitStack.Pop());
             Assert.Equal(0, bitStack.CurrentDepth);
 
@@ -37,10 +39,12 @@ namespace System.Text.Json.Tests
             Assert.Equal(0, bitStack.CurrentDepth);
             bitStack.SetFirstBit();
             Assert.Equal(1, bitStack.CurrentDepth);
+            Assert.True(bitStack.Peek());
             Assert.False(bitStack.Pop());
             Assert.Equal(0, bitStack.CurrentDepth);
             bitStack.ResetFirstBit();
             Assert.Equal(1, bitStack.CurrentDepth);
+            Assert.False(bitStack.Peek());
             Assert.False(bitStack.Pop());
             Assert.Equal(0, bitStack.CurrentDepth);
         }
@@ -76,6 +80,7 @@ namespace System.Text.Json.Tests
             // Loop backwards when popping.
             for (int i = bitLength - 1; i > 0; i--)
             {
+                Assert.Equal(values[i], bitStack.Peek());
                 // We need the value at the top *after* popping off the last one.
                 Assert.Equal(values[i - 1], bitStack.Pop());
                 Assert.Equal(i, bitStack.CurrentDepth);
