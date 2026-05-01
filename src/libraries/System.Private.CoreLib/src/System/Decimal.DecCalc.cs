@@ -161,7 +161,7 @@ namespace System
             {
                 ulong high = Math.BigMul(a, b, out ulong low);
                 if (high > uint.MaxValue)
-                    Number.ThrowOverflowException(SR.Overflow_Decimal);
+                    Number.ThrowDecimalOverflowException();
                 result.Low64 = low;
                 result.High = (uint)high;
             }
@@ -618,7 +618,7 @@ PosRem:
                     // current scale of the result, we'll overflow.
                     //
                     if (newScale > scale)
-                        goto ThrowOverflow;
+                        Number.ThrowDecimalOverflowException();
                 }
 
                 // Make sure we scale by enough to bring the current scale factor
@@ -698,7 +698,7 @@ PosRem:
                         if (hiRes > 2)
                         {
                             if (scale == 0)
-                                goto ThrowOverflow;
+                                Number.ThrowDecimalOverflowException();
                             newScale = 1;
                             scale--;
                             continue; // scale by 10
@@ -723,7 +723,7 @@ PosRem:
                                 // Scale by 10 more.
                                 //
                                 if (scale == 0)
-                                    goto ThrowOverflow;
+                                    Number.ThrowDecimalOverflowException();
                                 hiRes = cur;
                                 sticky = 0;    // no sticky bit
                                 remainder = 0; // or remainder
@@ -737,10 +737,6 @@ PosRem:
                     } // while (true)
                 }
                 return scale;
-
-ThrowOverflow:
-                Number.ThrowOverflowException(SR.Overflow_Decimal);
-                return 0;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -782,7 +778,7 @@ ThrowOverflow:
             private static int OverflowUnscale(ref Buf12 bufQuo, int scale, bool sticky)
             {
                 if (--scale < 0)
-                    Number.ThrowOverflowException(SR.Overflow_Decimal);
+                    Number.ThrowDecimalOverflowException();
 
                 Debug.Assert(bufQuo.U2 == 0);
 
@@ -823,7 +819,7 @@ ThrowOverflow:
             /// </summary>
             /// <param name="resMidLo">Low 64 bits of the 96-bit quotient</param>
             /// <param name="resHi">High 32 bits of the 96-bit quotient</param>
-            /// <param name="scale ">Scale factor of quotient, range -DEC_SCALE_MAX to DEC_SCALE_MAX-1</param>
+            /// <param name="scale">Scale factor of quotient, range -DEC_SCALE_MAX to DEC_SCALE_MAX-1</param>
             /// <returns>power of 10 to scale by</returns>
             private static int SearchScale(ulong resMidLo, uint resHi, int scale)
             {
@@ -908,7 +904,7 @@ ThrowOverflow:
                 // positive if it isn't already.
                 //
                 if (curScale + scale < 0)
-                    Number.ThrowOverflowException(SR.Overflow_Decimal);
+                    Number.ThrowDecimalOverflowException();
 
                 return curScale;
             }
@@ -1172,7 +1168,7 @@ AlignedScale:
                     // Divide the value by 10, dropping the scale factor.
                     //
                     if ((flags & ScaleMask) == 0)
-                        Number.ThrowOverflowException(SR.Overflow_Decimal);
+                        Number.ThrowDecimalOverflowException();
                     flags -= 1 << ScaleShift;
 
                     const uint den = 10;
@@ -1565,7 +1561,7 @@ ReturnZero:
                     return; // result should be zeroed out
 
                 if (exp > 96)
-                    Number.ThrowOverflowException(SR.Overflow_Decimal);
+                    Number.ThrowDecimalOverflowException();
 
                 uint flags = 0;
                 if (input < 0)
@@ -1725,7 +1721,7 @@ ReturnZero:
                     return; // result should be zeroed out
 
                 if (exp > 96)
-                    Number.ThrowOverflowException(SR.Overflow_Decimal);
+                    Number.ThrowDecimalOverflowException();
 
                 uint flags = 0;
                 if (input < 0)
@@ -1999,7 +1995,7 @@ ReturnZero:
                         scale += curScale;
 
                         if (IncreaseScale(ref bufQuo, power) != 0)
-                            goto ThrowOverflow;
+                            Number.ThrowDecimalOverflowException();
 
                         ulong num = Math.BigMul(remainder, power);
                         (uint div, remainder) = Div64By32(num, den);
@@ -2077,7 +2073,7 @@ ReturnZero:
                             scale += curScale;
 
                             if (IncreaseScale(ref bufQuo, power) != 0)
-                                goto ThrowOverflow;
+                                Number.ThrowDecimalOverflowException();
 
                             IncreaseScale64(ref bufRem.Low96, power);
                             tmp = Div96By64(ref bufRem.Low96, divisor);
@@ -2148,7 +2144,7 @@ ReturnZero:
                             scale += curScale;
 
                             if (IncreaseScale(ref bufQuo, power) != 0)
-                                goto ThrowOverflow;
+                                Number.ThrowDecimalOverflowException();
 
                             IncreaseScale(ref bufRem, power);
                             tmp = Div128By96(ref bufRem, ref bufDivisor);
@@ -2188,9 +2184,6 @@ RoundUp:
                     }
                     goto Unscale;
                 }
-
-ThrowOverflow:
-                Number.ThrowOverflowException(SR.Overflow_Decimal);
             }
 
             /// <summary>
@@ -2537,7 +2530,7 @@ done:
                 new PowerOvfl(42,        4078814305, 410238783),   // 10^8 remainder 0.09991616
             ];
 
-            [StructLayout(LayoutKind.Explicit, Pack = 1)]
+            [StructLayout(LayoutKind.Explicit)]
             private struct Buf12
             {
                 [FieldOffset(0 * 4)]
@@ -2578,7 +2571,7 @@ done:
                 }
             }
 
-            [StructLayout(LayoutKind.Explicit, Pack = 1)]
+            [StructLayout(LayoutKind.Explicit)]
             private struct Buf16
             {
                 [FieldOffset(0 * 4)]
@@ -2608,7 +2601,7 @@ done:
                 }
             }
 
-            [StructLayout(LayoutKind.Explicit, Pack = 1)]
+            [StructLayout(LayoutKind.Explicit)]
             private struct Buf24
             {
                 [FieldOffset(0 * 4)]
